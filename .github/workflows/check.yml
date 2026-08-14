@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Pandoc
         run: sudo apt-get update && sudo apt-get install -yy pandoc
       - name: Set up Ruby

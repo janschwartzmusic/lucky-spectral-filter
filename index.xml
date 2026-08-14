@@ -1,3 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="JSchwartz Lucky Spectral Filter">
-</index>
+<index version="1" name="JSchwartz Lucky Spectral Filter" commit="3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b">
+<category name="JSchwartz"><reapack name="JSchwartz_Simple_Spectral_Filter.jsfx" type="effect" desc="JSchwartz Simple Spectral Filter"><metadata><description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Drawable spectral filtering, FFT damage, and stereo delays wrapped in a rainbow-leprechaun interface. Draw two curves, morph between them, and automate the filter motion from REAPER.\par}
+}
+]]></description><link rel="website">https://github.com/janschwartzmusic/lucky-spectral-filter</link></metadata><version name="1.0.0" author="JSchwartz" time="2026-08-14T19:26:17Z"><changelog><![CDATA[Initial public release.]]></changelog><source>https://github.com/janschwartzmusic/lucky-spectral-filter/raw/3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b/JSchwartz/JSchwartz_Simple_Spectral_Filter.jsfx</source></version></reapack></category><metadata><description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 JSchwartz Simple Spectral Filter \u8212- Lucky Edition\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A drawable stereo spectral-damage JSFX for REAPER. Its signal path is:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b stereo pre-delay \u8594 ? drawable FFT filter/damage \u8594 ? stereo post-delay}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The custom panel is unapologetically rainbow-leprechaun themed: emerald surfaces, rainbow frequency bands and response trace, shamrocks, a lucky hat, gold controls, and the mandatory pot of gold.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The stereo FFT workspaces are isolated on REAPER-aligned memory pages, so the 16,384- and 32,768-sample modes remain stereo and do not mute the effect.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Drawing and automation\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Left-drag in the graph to draw the selected response; right-drag restores parts of it to 0 dB.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Draw two independent shapes with the {\b A} and {\b B} buttons.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b COPY} copies the selected shape to the other slot. {\b FLAT} resets only the selected shape.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab The drawings are saved in the REAPER project.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Morph A to B}, {\b Shift}, {\b Auto Sweep Depth}, and {\b Auto Sweep Rate} are standard REAPER-automatable parameters. This keeps the freehand curves expressive without creating hundreds of automation lanes.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Controls:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Low Cut}: removes spectrum below the selected frequency.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b High Cut}: removes spectrum above the selected frequency.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Edge Width}: softens both filter edges in octaves.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Spectral Tilt}: rotates the response around 1 kHz.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Output}: post-filter gain.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b FFT Size}: 1,024 to 32,768 samples. Larger settings deliberately trade transient precision for long, smeared spectral grains.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Transient Smear}: averages each bin's magnitude across FFT frames, making attacks bloom and decays hang behind the source.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Spectral Grain}: quantizes bin magnitudes in increasingly coarse dB steps.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Phase Scatter}: randomizes spectral phase while preserving real stereo output; high settings become hollow, noisy and washed out.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Frame Repeat}: reuses an FFT frame for up to four hops. At large FFT sizes this becomes an obvious spectral stutter or freeze.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Each stereo delay has independent left/right time, feedback, crossfeed (from straight stereo to ping-pong), high-frequency damping, and wet mix. The pre-delay's repeats are processed by the FFT filter; the post-delay echoes the already-filtered result.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 For the ReaFIR-style long-window effect, start with {\b FFT Size 32768} and raise {\b Transient Smear}. Add {\b Spectral Grain} around 20\u8211-50% for a crushed, unstable texture, then introduce {\b Phase Scatter} or one repeated frame for more extreme damage.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 For a moving drawn-filter effect, draw contrasting A and B curves, automate {\b Morph A to B}, then add 0.5\u8211-2 octaves of {\b Auto Sweep Depth}. Turn up the pre-delay when you want every repeat to be re-smeared by the spectral stage; turn up the post-delay for clearer echoes of the damaged sound.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 On macOS, run {\f1 ./install.command}. Or copy {\f1 JSchwartz/JSchwartz_Simple_Spectral_Filter.jsfx} manually to REAPER's {\f1 Effects/JSchwartz} resource folder, then rescan JS effects or restart REAPER.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Install and update\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 ReaPack \u8212- recommended\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Import this repository URL once in ReaPack:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\f1 https://raw.githubusercontent.com/janschwartzmusic/lucky-spectral-filter/main/index.xml}\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 After that, ReaPack's normal synchronize/update command installs every future version when the user wants it.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 macOS installer\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Download the repository or a release, then double-click {\f1 install.command}. After the first installation, {\f1 update.command} downloads the latest published JSFX from GitHub and installs it directly.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Repository: https://github.com/janschwartzmusic/lucky-spectral-filter\par}
+}
+]]></description></metadata></index>

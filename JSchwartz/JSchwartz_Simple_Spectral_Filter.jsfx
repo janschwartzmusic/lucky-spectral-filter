@@ -1,0 +1,674 @@
+// @description JSchwartz Simple Spectral Filter — Lucky Edition
+// @version 1.0.0
+// @author JSchwartz
+// @changelog Initial public release.
+// @about Drawable spectral filtering, FFT damage, and stereo delays wrapped in
+//   a rainbow-leprechaun interface. Draw two curves, morph between them, and
+//   automate the filter motion from REAPER.
+// @link https://github.com/janschwartzmusic/lucky-spectral-filter
+desc:JSchwartz Simple Spectral Filter
+//tags: FFT filter spectral stereo delay drawable modulation
+//author: JSchwartz
+
+slider1:30<10,1000,1>Filter: Low Cut (Hz)
+slider2:18000<1000,24000,10>Filter: High Cut (Hz)
+slider3:1<0.1,4,0.1>Filter: Edge Width (octaves)
+slider4:0<-12,12,0.1>Filter: Spectral Tilt (dB/octave)
+slider5:0<-24,12,0.1>Filter: Output (dB)
+slider6:1<0,5,1{1024,2048,4096,8192,16384,32768}>Filter: FFT Size
+slider7:0<0,100,1>Damage: Transient Smear (%)
+slider8:0<0,100,1>Damage: Spectral Grain (%)
+slider9:0<0,100,1>Damage: Phase Scatter (%)
+slider10:0<0,4,1>Damage: Frame Repeat (frames)
+slider11:0<0,100,0.1>Drawing: Morph A to B (%)
+slider12:0<-4,4,0.01>Drawing: Shift (octaves)
+slider13:0<0,4,0.01>Drawing: Auto Sweep Depth (octaves)
+slider14:0.2<0,10,0.01>Drawing: Auto Sweep Rate (Hz)
+slider15:220<1,2000,1>Pre Delay: Left Time (ms)
+slider16:330<1,2000,1>Pre Delay: Right Time (ms)
+slider17:35<0,95,0.1>Pre Delay: Feedback (%)
+slider18:50<0,100,0.1>Pre Delay: Crossfeed / Ping-Pong (%)
+slider19:20<0,100,0.1>Pre Delay: HF Damping (%)
+slider20:0<0,100,0.1>Pre Delay: Mix (%)
+slider21:375<1,2000,1>Post Delay: Left Time (ms)
+slider22:500<1,2000,1>Post Delay: Right Time (ms)
+slider23:40<0,95,0.1>Post Delay: Feedback (%)
+slider24:70<0,100,0.1>Post Delay: Crossfeed / Ping-Pong (%)
+slider25:25<0,100,0.1>Post Delay: HF Damping (%)
+slider26:0<0,100,0.1>Post Delay: Mix (%)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+
+  ext_noinit = 1;
+  fftsize = -1;
+  position = 0;
+
+  // FFT/IFFT blocks must not cross REAPER's 65,536-slot memory pages.
+  // Each maximum-size complex block therefore begins on its own page.
+  window = 0;
+  left_a = 65536;
+  left_b = 131072;
+  right_a = 196608;
+  right_b = 262144;
+  left_magnitude = 327680;
+  right_magnitude = 344064;
+  held_left = 393216;
+  held_right = 458752;
+
+  // Two persistent, drawable frequency-response curves.
+  shape_point_count = 512;
+  shape_a = 524288;
+  shape_b = shape_a + shape_point_count;
+  !shape_initialized ? (
+    memset(shape_a, 0, shape_point_count);
+    memset(shape_b, 0, shape_point_count);
+    shape_initialized = 1;
+  );
+  active_shape = 0;
+  last_draw_index = -1;
+
+  // Two stereo delay lines. Each frame stores interleaved left/right samples.
+  delay_buffer_frames = ceil(srate * 2.05) + 8;
+  pre_delay_buffer = 600000;
+  post_delay_buffer = pre_delay_buffer + 2*delay_buffer_frames + 8;
+  memset(pre_delay_buffer, 0, 2*delay_buffer_frames);
+  memset(post_delay_buffer, 0, 2*delay_buffer_frames);
+  pre_write_frame = 0;
+  post_write_frame = 0;
+  pre_delay_left_current = 0;
+  pre_delay_right_current = 0;
+  post_delay_left_current = 0;
+  post_delay_right_current = 0;
+  pre_feedback_state_left = 0;
+  pre_feedback_state_right = 0;
+  post_feedback_state_left = 0;
+  post_feedback_state_right = 0;
+  auto_sweep_phase = 0;
+
+  pdc_bot_ch = 0;
+  pdc_top_ch = 2;
+
+  function smooth_step(value) local(x) (
+    x = min(1, max(0, value));
+    x*x*(3 - 2*x);
+  );
+
+  function shape_db_at(frequency)
+    local(shifted_frequency, normalized_position, scaled_position,
+          index_a, index_b, fraction, value_a, value_b) (
+    shifted_frequency = frequency / (2 ^ shape_total_shift_octaves);
+    normalized_position = log(max(20, min(20000, shifted_frequency)) / 20)
+                          / log(20000 / 20);
+    scaled_position = normalized_position * (shape_point_count - 1);
+    index_a = floor(scaled_position);
+    index_b = min(shape_point_count - 1, index_a + 1);
+    fraction = scaled_position - index_a;
+    value_a = shape_a[index_a]*(1 - fraction) + shape_a[index_b]*fraction;
+    value_b = shape_b[index_a]*(1 - fraction) + shape_b[index_b]*fraction;
+    value_a + (value_b - value_a)*shape_morph;
+  );
+
+  function spectral_gain(frequency) local(gain, position_in_edge, tilt_db, draw_db) (
+    gain = 1;
+
+    frequency <= 0 ? (
+      gain = 0;
+    ) : (
+      frequency < low_hz ? (
+        position_in_edge = log(frequency / low_edge_start) / log(2) / edge_octaves;
+        gain *= smooth_step(position_in_edge);
+      );
+
+      frequency > high_hz ? (
+        position_in_edge = 1 - log(frequency / high_hz) / log(2) / edge_octaves;
+        gain *= smooth_step(position_in_edge);
+      );
+
+      tilt_db = tilt_db_per_octave * log(frequency / 1000) / log(2);
+      tilt_db = min(36, max(-60, tilt_db));
+      draw_db = shape_db_at(frequency);
+      gain *= exp((tilt_db + draw_db) * log(10) / 20);
+    );
+
+    gain;
+  );
+
+  function shape_spectrum(block, magnitude_history)
+    local(bin, fft_index, mirror_index, frequency, response,
+          real_value, imaginary_value, magnitude, remembered_magnitude,
+          shaped_magnitude, magnitude_db, scale, phase_angle,
+          cosine_value, sine_value, mirror_real, mirror_imaginary) (
+
+    fft(block, fftsize);
+    fft_permute(block, fftsize);
+
+    bin = 0;
+    fft_index = 0;
+    loop(fftsize / 2,
+      frequency = bin * srate / fftsize;
+      response = spectral_gain(frequency);
+      mirror_index = 2*fftsize - fft_index - 2;
+
+      real_value = block[fft_index];
+      imaginary_value = block[fft_index + 1];
+      magnitude = sqrt(real_value*real_value + imaginary_value*imaginary_value);
+
+      remembered_magnitude = magnitude_history[bin];
+      remembered_magnitude <= 0 ? remembered_magnitude = magnitude;
+      shaped_magnitude = remembered_magnitude*smear_coefficient
+                         + magnitude*(1 - smear_coefficient);
+      magnitude_history[bin] = shaped_magnitude;
+
+      grain_amount > 0 && shaped_magnitude > 0.000000000001 ? (
+        magnitude_db = 20 * log(shaped_magnitude) / log(10);
+        magnitude_db = floor(magnitude_db / grain_step_db + 0.5) * grain_step_db;
+        shaped_magnitude = exp(magnitude_db * log(10) / 20);
+      );
+
+      magnitude > 0.000000000001 ? (
+        scale = response * min(16, shaped_magnitude / magnitude);
+      ) : (
+        scale = 0;
+      );
+
+      phase_angle = bin > 0 ? (rand(2) - 1) * $pi * phase_scatter_amount : 0;
+      cosine_value = cos(phase_angle);
+      sine_value = sin(phase_angle);
+
+      real_value *= scale;
+      imaginary_value *= scale;
+      block[fft_index] = real_value*cosine_value - imaginary_value*sine_value;
+      block[fft_index + 1] = real_value*sine_value + imaginary_value*cosine_value;
+
+      // Matching opposite rotation preserves a real-valued channel.
+      mirror_real = block[mirror_index] * scale;
+      mirror_imaginary = block[mirror_index + 1] * scale;
+      block[mirror_index] = mirror_real*cosine_value + mirror_imaginary*sine_value;
+      block[mirror_index + 1] = -mirror_real*sine_value + mirror_imaginary*cosine_value;
+
+      fft_index += 2;
+      bin += 1;
+    );
+  );
+
+  function delay_read(buffer, write_frame, delay_frames, buffer_frames, channel)
+    local(read_frame, index_a, index_b, fraction) (
+    read_frame = write_frame - delay_frames;
+    read_frame < 0 ? read_frame += buffer_frames;
+    index_a = floor(read_frame);
+    index_b = index_a + 1;
+    index_b >= buffer_frames ? index_b = 0;
+    fraction = read_frame - index_a;
+    buffer[2*index_a + channel]*(1 - fraction)
+      + buffer[2*index_b + channel]*fraction;
+  );
+
+@slider
+
+  low_hz = max(10, min(slider1, srate * 0.49));
+  high_hz = max(low_hz, min(slider2, srate * 0.49));
+  edge_octaves = max(0.1, slider3);
+  tilt_db_per_octave = slider4;
+  output_gain = exp(slider5 * log(10) / 20);
+  smear_coefficient = slider7 <= 0 ? 0 : 1 - exp(-0.055 * slider7);
+  grain_amount = slider8 / 100;
+  grain_step_db = 0.25 + grain_amount*grain_amount*23.75;
+  phase_scatter_amount = (slider9 / 100) ^ 2;
+  frame_repeat_count = slider10 | 0;
+
+  shape_morph = slider11 / 100;
+  shape_manual_shift_octaves = slider12;
+  auto_sweep_depth_octaves = slider13;
+  auto_sweep_rate_hz = slider14;
+
+  low_edge_start = max(1, low_hz / (2 ^ edge_octaves));
+
+  pre_delay_left_target = min(delay_buffer_frames - 2, max(1, slider15*srate/1000));
+  pre_delay_right_target = min(delay_buffer_frames - 2, max(1, slider16*srate/1000));
+  pre_feedback = slider17 / 100;
+  pre_crossfeed = slider18 / 100;
+  pre_damping_cutoff = 20000 * ((600 / 20000) ^ (slider19 / 100));
+  pre_damping_cutoff = min(srate*0.45, pre_damping_cutoff);
+  pre_damping_alpha = slider19 <= 0 ? 1 : 1 - exp(-2*$pi*pre_damping_cutoff/srate);
+  pre_mix = slider20 / 100;
+
+  post_delay_left_target = min(delay_buffer_frames - 2, max(1, slider21*srate/1000));
+  post_delay_right_target = min(delay_buffer_frames - 2, max(1, slider22*srate/1000));
+  post_feedback = slider23 / 100;
+  post_crossfeed = slider24 / 100;
+  post_damping_cutoff = 20000 * ((600 / 20000) ^ (slider25 / 100));
+  post_damping_cutoff = min(srate*0.45, post_damping_cutoff);
+  post_damping_alpha = slider25 <= 0 ? 1 : 1 - exp(-2*$pi*post_damping_cutoff/srate);
+  post_mix = slider26 / 100;
+
+  pre_delay_left_current <= 0 ? pre_delay_left_current = pre_delay_left_target;
+  pre_delay_right_current <= 0 ? pre_delay_right_current = pre_delay_right_target;
+  post_delay_left_current <= 0 ? post_delay_left_current = post_delay_left_target;
+  post_delay_right_current <= 0 ? post_delay_right_current = post_delay_right_target;
+
+  requested_fft_size = (2 ^ (slider6 + 10)) | 0;
+  requested_fft_size != fftsize ? (
+    fftsize = requested_fft_size;
+    position = 0;
+    repeat_remaining = 0;
+    memset(left_a, 0, 2 * 32768);
+    memset(left_b, 0, 2 * 32768);
+    memset(right_a, 0, 2 * 32768);
+    memset(right_b, 0, 2 * 32768);
+    memset(left_magnitude, 0, 16384);
+    memset(right_magnitude, 0, 16384);
+    memset(held_left, 0, 2 * 32768);
+    memset(held_right, 0, 2 * 32768);
+    memset(window, 0, 16384);
+
+    phase = 2 * $pi / fftsize;
+    index = 0;
+    loop(fftsize / 2,
+      window[index] = 0.42 - 0.50*cos(index*phase) + 0.08*cos(2*index*phase);
+      index += 1;
+    );
+
+    pdc_delay = fftsize;
+    ext_tail_size = -1;
+  );
+
+@serialize
+
+  file_mem(0, shape_a, shape_point_count) ? shape_initialized = 1;
+  file_mem(0, shape_b, shape_point_count) ? shape_initialized = 1;
+
+@sample
+
+  // Automatable sine sweep moves the drawing over the log-frequency axis.
+  auto_sweep_phase += auto_sweep_rate_hz / srate;
+  auto_sweep_phase >= 1 ? auto_sweep_phase -= 1;
+  shape_total_shift_octaves = shape_manual_shift_octaves
+                              + sin(2*$pi*auto_sweep_phase)*auto_sweep_depth_octaves;
+
+  delay_smoothing = 0.001;
+  pre_delay_left_current += (pre_delay_left_target - pre_delay_left_current)*delay_smoothing;
+  pre_delay_right_current += (pre_delay_right_target - pre_delay_right_current)*delay_smoothing;
+  post_delay_left_current += (post_delay_left_target - post_delay_left_current)*delay_smoothing;
+  post_delay_right_current += (post_delay_right_target - post_delay_right_current)*delay_smoothing;
+
+  // Stereo delay before the spectral stage.
+  chain_input_left = spl0;
+  chain_input_right = spl1;
+  pre_wet_left = delay_read(pre_delay_buffer, pre_write_frame,
+                            pre_delay_left_current, delay_buffer_frames, 0);
+  pre_wet_right = delay_read(pre_delay_buffer, pre_write_frame,
+                             pre_delay_right_current, delay_buffer_frames, 1);
+
+  pre_feedback_state_left += (pre_wet_left - pre_feedback_state_left)*pre_damping_alpha;
+  pre_feedback_state_right += (pre_wet_right - pre_feedback_state_right)*pre_damping_alpha;
+  pre_feedback_to_left = pre_feedback_state_left*(1 - pre_crossfeed)
+                         + pre_feedback_state_right*pre_crossfeed;
+  pre_feedback_to_right = pre_feedback_state_right*(1 - pre_crossfeed)
+                          + pre_feedback_state_left*pre_crossfeed;
+  pre_delay_buffer[2*pre_write_frame] = chain_input_left + pre_feedback_to_left*pre_feedback;
+  pre_delay_buffer[2*pre_write_frame + 1] = chain_input_right + pre_feedback_to_right*pre_feedback;
+  pre_write_frame += 1;
+  pre_write_frame >= delay_buffer_frames ? pre_write_frame = 0;
+
+  input_left = chain_input_left*(1 - pre_mix) + pre_wet_left*pre_mix;
+  input_right = chain_input_right*(1 - pre_mix) + pre_wet_right*pre_mix;
+
+  // FFT overlap-add stage.
+  position >= fftsize ? (
+    temporary = left_a;
+    left_a = left_b;
+    left_b = temporary;
+
+    temporary = right_a;
+    right_a = right_b;
+    right_b = temporary;
+
+    repeat_remaining > 0 ? (
+      memcpy(left_a, held_left, 2 * fftsize);
+      memcpy(right_a, held_right, 2 * fftsize);
+      repeat_remaining -= 1;
+    ) : (
+      shape_spectrum(left_a, left_magnitude);
+      shape_spectrum(right_a, right_magnitude);
+      memcpy(held_left, left_a, 2 * fftsize);
+      memcpy(held_right, right_a, 2 * fftsize);
+      repeat_remaining = frame_repeat_count;
+    );
+
+    fft_ipermute(left_a, fftsize);
+    ifft(left_a, fftsize);
+    fft_ipermute(right_a, fftsize);
+    ifft(right_a, fftsize);
+    position = 0;
+  );
+
+  window_a = window[position / 2];
+  window_b = window[(fftsize - position) / 2 - 1];
+  normalization = max(0.000000001, (window_a + window_b) * fftsize);
+
+  spectral_left = (left_a[position] + left_b[fftsize + position]) / normalization;
+  spectral_right = (right_a[position] + right_b[fftsize + position]) / normalization;
+
+  left_a[position] = window_a * input_left;
+  left_a[position + 1] = 0;
+  left_b[fftsize + position] = window_b * input_left;
+  left_b[fftsize + position + 1] = 0;
+  right_a[position] = window_a * input_right;
+  right_a[position + 1] = 0;
+  right_b[fftsize + position] = window_b * input_right;
+  right_b[fftsize + position + 1] = 0;
+  position += 2;
+
+  spectral_left *= output_gain;
+  spectral_right *= output_gain;
+
+  // Stereo delay after the spectral stage.
+  post_wet_left = delay_read(post_delay_buffer, post_write_frame,
+                             post_delay_left_current, delay_buffer_frames, 0);
+  post_wet_right = delay_read(post_delay_buffer, post_write_frame,
+                              post_delay_right_current, delay_buffer_frames, 1);
+  post_feedback_state_left += (post_wet_left - post_feedback_state_left)*post_damping_alpha;
+  post_feedback_state_right += (post_wet_right - post_feedback_state_right)*post_damping_alpha;
+  post_feedback_to_left = post_feedback_state_left*(1 - post_crossfeed)
+                          + post_feedback_state_right*post_crossfeed;
+  post_feedback_to_right = post_feedback_state_right*(1 - post_crossfeed)
+                           + post_feedback_state_left*post_crossfeed;
+  post_delay_buffer[2*post_write_frame] = spectral_left + post_feedback_to_left*post_feedback;
+  post_delay_buffer[2*post_write_frame + 1] = spectral_right + post_feedback_to_right*post_feedback;
+  post_write_frame += 1;
+  post_write_frame >= delay_buffer_frames ? post_write_frame = 0;
+
+  spl0 = spectral_left*(1 - post_mix) + post_wet_left*post_mix;
+  spl1 = spectral_right*(1 - post_mix) + post_wet_right*post_mix;
+
+@gfx 760 440
+
+  function set_rainbow_color(position, alpha)
+    local(wrapped, segment, fraction) (
+    wrapped = position - floor(position);
+    segment = floor(wrapped * 6);
+    fraction = wrapped*6 - segment;
+    segment == 0 ? (gfx_r = 1; gfx_g = fraction; gfx_b = 0;);
+    segment == 1 ? (gfx_r = 1 - fraction; gfx_g = 1; gfx_b = 0;);
+    segment == 2 ? (gfx_r = 0; gfx_g = 1; gfx_b = fraction;);
+    segment == 3 ? (gfx_r = 0; gfx_g = 1 - fraction; gfx_b = 1;);
+    segment == 4 ? (gfx_r = fraction; gfx_g = 0; gfx_b = 1;);
+    segment == 5 ? (gfx_r = 1; gfx_g = 0; gfx_b = 1 - fraction;);
+    gfx_a = alpha;
+  );
+
+  function draw_shamrock(center_x, center_y, size) (
+    gfx_r = 0.10; gfx_g = 0.78; gfx_b = 0.24; gfx_a = 1;
+    gfx_circle(center_x - size*0.42, center_y - size*0.22, size*0.48, 1, 1);
+    gfx_circle(center_x + size*0.42, center_y - size*0.22, size*0.48, 1, 1);
+    gfx_circle(center_x, center_y - size*0.72, size*0.48, 1, 1);
+    gfx_line(center_x, center_y, center_x + size*0.26, center_y + size*1.2, 1);
+  );
+
+  function draw_leprechaun_hat(x, y, size) (
+    gfx_r = 0.02; gfx_g = 0.44; gfx_b = 0.14; gfx_a = 1;
+    gfx_triangle(x + size*0.18, y, x + size*0.75, y,
+                 x + size*0.90, y + size*0.68, x + size*0.08, y + size*0.68);
+    gfx_r = 0.01; gfx_g = 0.08; gfx_b = 0.025;
+    gfx_rect(x + size*0.10, y + size*0.45, size*0.76, size*0.20);
+    gfx_r = 1; gfx_g = 0.74; gfx_b = 0.06;
+    gfx_rect(x + size*0.39, y + size*0.43, size*0.22, size*0.24);
+    gfx_r = 0.01; gfx_g = 0.08; gfx_b = 0.025;
+    gfx_rect(x + size*0.44, y + size*0.47, size*0.12, size*0.16);
+    gfx_r = 0.03; gfx_g = 0.58; gfx_b = 0.18;
+    gfx_rect(x, y + size*0.65, size, size*0.16);
+  );
+
+  function draw_pot_of_gold(center_x, bottom_y, size) local(coin) (
+    coin = 0;
+    loop(7,
+      gfx_r = 1; gfx_g = 0.72 + 0.04*(coin % 2); gfx_b = 0.04; gfx_a = 1;
+      gfx_circle(center_x - size*0.36 + coin*size*0.12,
+                 bottom_y - size*0.72 - abs(3 - coin)*size*0.035,
+                 size*0.13, 1, 1);
+      coin += 1;
+    );
+    gfx_r = 0.025; gfx_g = 0.05; gfx_b = 0.025;
+    gfx_triangle(center_x - size*0.48, bottom_y - size*0.62,
+                 center_x + size*0.48, bottom_y - size*0.62,
+                 center_x + size*0.32, bottom_y,
+                 center_x - size*0.32, bottom_y);
+    gfx_r = 0.12; gfx_g = 0.18; gfx_b = 0.08;
+    gfx_rect(center_x - size*0.54, bottom_y - size*0.67, size*1.08, size*0.16);
+  );
+
+  gfx_clear = 0x031b0d;
+  margin_left = 58;
+  margin_right = 18;
+  margin_top = 72;
+  margin_bottom = 58;
+  graph_width = gfx_w - margin_left - margin_right;
+  graph_height = gfx_h - margin_top - margin_bottom;
+
+  // Seven-color lucky rainbow ribbon.
+  rainbow_strip = 0;
+  loop(7,
+    set_rainbow_color(rainbow_strip / 7, 1);
+    gfx_rect(0, rainbow_strip*2, gfx_w, 2);
+    rainbow_strip += 1;
+  );
+
+  draw_leprechaun_hat(14, 19, 43);
+  gfx_setfont(1, "Arial", 18, 'b');
+  gfx_r = 1; gfx_g = 0.78; gfx_b = 0.08; gfx_a = 1;
+  gfx_x = 70; gfx_y = 21;
+  gfx_drawstr("LUCKY SPECTRAL LEPRECHAUN");
+  gfx_setfont(2, "Arial", 10, 'b');
+  gfx_r = 0.28; gfx_g = 0.94; gfx_b = 0.40;
+  gfx_x = 71; gfx_y = 44;
+  gfx_drawstr("DRAW YOUR OWN POT O' FREQUENCY GOLD");
+
+  // Shape selection, copy, and reset buttons.
+  button_y = 23;
+  button_h = 30;
+  button_a_x = gfx_w - 244;
+  button_b_x = gfx_w - 202;
+  button_copy_x = gfx_w - 160;
+  button_flat_x = gfx_w - 94;
+
+  left_down = mouse_cap & 1;
+  right_down = mouse_cap & 2;
+  left_pressed = left_down && !last_left_down;
+  button_consumed = 0;
+
+  left_pressed && mouse_y >= button_y && mouse_y < button_y + button_h ? (
+    mouse_x >= button_a_x && mouse_x < button_a_x + 36 ? (
+      active_shape = 0; button_consumed = 1;
+    );
+    mouse_x >= button_b_x && mouse_x < button_b_x + 36 ? (
+      active_shape = 1; button_consumed = 1;
+    );
+    mouse_x >= button_copy_x && mouse_x < button_copy_x + 60 ? (
+      active_shape ? memcpy(shape_a, shape_b, shape_point_count)
+                   : memcpy(shape_b, shape_a, shape_point_count);
+      sliderchange(-1);
+      button_consumed = 1;
+    );
+    mouse_x >= button_flat_x && mouse_x < button_flat_x + 76 ? (
+      edit_buffer = active_shape ? shape_b : shape_a;
+      memset(edit_buffer, 0, shape_point_count);
+      sliderchange(-1);
+      button_consumed = 1;
+    );
+  );
+
+  // Emerald-and-gold button rendering.
+  gfx_r = active_shape ? 0.03 : 0.10; gfx_g = active_shape ? 0.25 : 0.74;
+  gfx_b = active_shape ? 0.08 : 0.20; gfx_a = 1;
+  gfx_rect(button_a_x, button_y, 36, button_h);
+  gfx_r = active_shape ? 0.62 : 0.03; gfx_g = active_shape ? 0.18 : 0.25;
+  gfx_b = active_shape ? 0.90 : 0.08;
+  gfx_rect(button_b_x, button_y, 36, button_h);
+  gfx_r = 0.03; gfx_g = 0.34; gfx_b = 0.11;
+  gfx_rect(button_copy_x, button_y, 60, button_h);
+  gfx_rect(button_flat_x, button_y, 76, button_h);
+  gfx_r = 1; gfx_g = 0.75; gfx_b = 0.06;
+  gfx_line(button_a_x, button_y, button_a_x + 36, button_y);
+  gfx_line(button_a_x + 36, button_y, button_a_x + 36, button_y + button_h);
+  gfx_line(button_a_x + 36, button_y + button_h, button_a_x, button_y + button_h);
+  gfx_line(button_a_x, button_y + button_h, button_a_x, button_y);
+  gfx_line(button_b_x, button_y, button_b_x + 36, button_y);
+  gfx_line(button_b_x + 36, button_y, button_b_x + 36, button_y + button_h);
+  gfx_line(button_b_x + 36, button_y + button_h, button_b_x, button_y + button_h);
+  gfx_line(button_b_x, button_y + button_h, button_b_x, button_y);
+  gfx_line(button_copy_x, button_y, button_copy_x + 60, button_y);
+  gfx_line(button_copy_x + 60, button_y, button_copy_x + 60, button_y + button_h);
+  gfx_line(button_copy_x + 60, button_y + button_h, button_copy_x, button_y + button_h);
+  gfx_line(button_copy_x, button_y + button_h, button_copy_x, button_y);
+  gfx_line(button_flat_x, button_y, button_flat_x + 76, button_y);
+  gfx_line(button_flat_x + 76, button_y, button_flat_x + 76, button_y + button_h);
+  gfx_line(button_flat_x + 76, button_y + button_h, button_flat_x, button_y + button_h);
+  gfx_line(button_flat_x, button_y + button_h, button_flat_x, button_y);
+  gfx_setfont(3, "Arial", 11, 'b');
+  gfx_r = 1; gfx_g = 0.91; gfx_b = 0.45;
+  gfx_x = button_a_x + 13; gfx_y = button_y + 8; gfx_drawstr("A");
+  gfx_x = button_b_x + 13; gfx_y = button_y + 8; gfx_drawstr("B");
+  gfx_x = button_copy_x + 10; gfx_y = button_y + 8; gfx_drawstr("COPY");
+  gfx_x = button_flat_x + 17; gfx_y = button_y + 8; gfx_drawstr("FLAT");
+
+  // Deep emerald graph with transparent rainbow frequency bands.
+  gfx_r = 0.008; gfx_g = 0.085; gfx_b = 0.035; gfx_a = 1;
+  gfx_rect(margin_left, margin_top, graph_width, graph_height);
+  rainbow_band = 0;
+  loop(7,
+    set_rainbow_color(rainbow_band / 7, 0.09);
+    band_left = margin_left + rainbow_band*graph_width/7;
+    gfx_rect(band_left, margin_top, graph_width/7 + 1, graph_height);
+    rainbow_band += 1;
+  );
+
+  gfx_setfont(4, "Arial", 10);
+  grid_db = 12;
+  loop(7,
+    grid_y = margin_top + (12 - grid_db) / 72 * graph_height;
+    gfx_r = 0.30; gfx_g = 0.47; gfx_b = 0.23; gfx_a = 0.75;
+    gfx_line(margin_left, grid_y, margin_left + graph_width, grid_y);
+    gfx_r = 0.92; gfx_g = 0.72; gfx_b = 0.18; gfx_a = 1;
+    gfx_x = 7; gfx_y = grid_y - 6;
+    gfx_drawnumber(grid_db, 0); gfx_drawstr(" dB");
+    grid_db -= 12;
+  );
+
+  // Log-frequency grid.
+  frequency_label = 20;
+  loop(11,
+    frequency_x = margin_left + log(frequency_label / 20) / log(20000 / 20) * graph_width;
+    gfx_r = 0.18; gfx_g = 0.43; gfx_b = 0.20; gfx_a = 0.7;
+    gfx_line(frequency_x, margin_top, frequency_x, margin_top + graph_height);
+    frequency_label == 20 || frequency_label == 100 || frequency_label == 1000
+      || frequency_label == 10000 || frequency_label == 20000 ? (
+      gfx_r = 0.92; gfx_g = 0.72; gfx_b = 0.18; gfx_a = 1;
+      gfx_x = frequency_x - 12; gfx_y = margin_top + graph_height + 8;
+      frequency_label >= 1000 ? (
+        gfx_drawnumber(frequency_label / 1000, 0); gfx_drawstr("k");
+      ) : gfx_drawnumber(frequency_label, 0);
+    );
+    frequency_label *= (frequency_label == 20 ? 2.5 : 2);
+  );
+  gfx_r = 1; gfx_g = 0.72; gfx_b = 0.04; gfx_a = 1;
+  gfx_line(margin_left, margin_top, margin_left + graph_width, margin_top);
+  gfx_line(margin_left + graph_width, margin_top,
+           margin_left + graph_width, margin_top + graph_height);
+  gfx_line(margin_left + graph_width, margin_top + graph_height,
+           margin_left, margin_top + graph_height);
+  gfx_line(margin_left, margin_top + graph_height, margin_left, margin_top);
+
+  // Raw A and B drawings: shamrock green and enchanted violet.
+  point = 0;
+  loop(max(1, graph_width | 0),
+    shape_index = min(shape_point_count - 1,
+                      floor(point / max(1, graph_width - 1) * (shape_point_count - 1)));
+    current_x = margin_left + point;
+    curve_a_y = margin_top + (12 - max(-60, min(12, shape_a[shape_index]))) / 72 * graph_height;
+    curve_b_y = margin_top + (12 - max(-60, min(12, shape_b[shape_index]))) / 72 * graph_height;
+    point > 0 ? (
+      gfx_r = 0.20; gfx_g = 1; gfx_b = 0.30; gfx_a = active_shape ? 0.30 : 0.85;
+      gfx_line(previous_x, previous_a_y, current_x, curve_a_y, 1);
+      gfx_r = 0.72; gfx_g = 0.22; gfx_b = 1; gfx_a = active_shape ? 0.85 : 0.30;
+      gfx_line(previous_x, previous_b_y, current_x, curve_b_y, 1);
+    );
+    previous_x = current_x;
+    previous_a_y = curve_a_y;
+    previous_b_y = curve_b_y;
+    point += 1;
+  );
+
+  // The currently heard total response is a live rainbow.
+  point = 0;
+  previous_x = margin_left;
+  previous_y = margin_top + graph_height;
+  loop(max(1, graph_width | 0),
+    frequency = 20 * exp(log(20000 / 20) * point / max(1, graph_width - 1));
+    response = max(0.000001, spectral_gain(frequency) * output_gain);
+    response_db = max(-60, min(12, 20 * log(response) / log(10)));
+    current_x = margin_left + point;
+    current_y = margin_top + (12 - response_db) / 72 * graph_height;
+    point > 0 ? (
+      set_rainbow_color(point / max(1, graph_width - 1), 1);
+      gfx_line(previous_x, previous_y, current_x, current_y, 1);
+      gfx_r = 1; gfx_g = 0.82; gfx_b = 0.24; gfx_a = 0.34;
+      gfx_line(previous_x, previous_y + 1, current_x, current_y + 1, 1);
+    );
+    previous_x = current_x;
+    previous_y = current_y;
+    point += 1;
+  );
+
+  // Left-drag draws the selected shape; right-drag erases toward 0 dB.
+  inside_graph = mouse_x >= margin_left && mouse_x < margin_left + graph_width
+                 && mouse_y >= margin_top && mouse_y < margin_top + graph_height;
+  inside_graph && (left_down || right_down) && !button_consumed ? (
+    draw_index = floor((mouse_x - margin_left) / graph_width * shape_point_count);
+    draw_index = max(0, min(shape_point_count - 1, draw_index));
+    draw_value = right_down ? 0
+                 : 12 - (mouse_y - margin_top) / graph_height * 72;
+    draw_value = max(-60, min(12, draw_value));
+    edit_buffer = active_shape ? shape_b : shape_a;
+
+    last_draw_index >= 0 && last_draw_index != draw_index ? (
+      draw_distance = abs(draw_index - last_draw_index);
+      draw_step = draw_index > last_draw_index ? 1 : -1;
+      fill_count = 1;
+      loop(draw_distance,
+        fill_index = last_draw_index + fill_count*draw_step;
+        fill_fraction = fill_count / draw_distance;
+        edit_buffer[fill_index] = last_draw_value
+                                  + (draw_value - last_draw_value)*fill_fraction;
+        fill_count += 1;
+      );
+    ) : edit_buffer[draw_index] = draw_value;
+
+    last_draw_index = draw_index;
+    last_draw_value = draw_value;
+    drawing_changed = 1;
+  ) : last_draw_index = -1;
+
+  input_released = !left_down && !right_down && (last_left_down || last_right_down);
+  input_released && drawing_changed ? (
+    sliderchange(-1);
+    drawing_changed = 0;
+  );
+  last_left_down = left_down;
+  last_right_down = right_down;
+
+  draw_shamrock(25, gfx_h - 24, 8);
+  draw_pot_of_gold(gfx_w - 35, gfx_h - 7, 32);
+  gfx_setfont(4, "Arial", 10, 'b');
+  gfx_r = 1; gfx_g = 0.79; gfx_b = 0.15; gfx_a = 1;
+  gfx_x = margin_left;
+  gfx_y = gfx_h - 22;
+  gfx_drawstr("LEFT DRAG: make magic   RIGHT DRAG: undo magic   //   FFT ");
+  gfx_drawnumber(fftsize, 0);
+  gfx_drawstr("   //   ");
+  gfx_drawnumber(fftsize / srate * 1000, 1);
+  gfx_drawstr(" ms");

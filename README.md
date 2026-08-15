@@ -77,3 +77,10 @@ After the first installation, `update.command` downloads the latest published
 JSFX from GitHub and installs it directly.
 
 Repository: https://github.com/janschwartzmusic/lucky-spectral-filter
+
+## Collaborating
+
+Jan and Colin share this repository directly. Keep `main` as the stable,
+published plug-in; make changes on personal branches and merge them through a
+pull request after testing the branch in REAPER. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the exact commands and listening checks.

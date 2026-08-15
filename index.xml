@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="JSchwartz Lucky Spectral Filter" commit="3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b">
+<index version="1" name="JSchwartz Lucky Spectral Filter" commit="fcaa434de5e81d74f28dc6c8a5ffe738a201e637">
   <category name="JSchwartz">
     <reapack name="JSchwartz_Simple_Spectral_Filter.jsfx" type="effect" desc="JSchwartz Simple Spectral Filter">
       <metadata>
@@ -15,6 +15,10 @@
       <version name="1.0.0" author="JSchwartz" time="2026-08-14T19:26:17Z">
         <changelog><![CDATA[Initial public release.]]></changelog>
         <source>https://github.com/janschwartzmusic/lucky-spectral-filter/raw/3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b/JSchwartz/JSchwartz_Simple_Spectral_Filter.jsfx</source>
+      </version>
+      <version name="2.6.0" author="JSchwartz" time="2026-08-15T06:01:08Z">
+        <changelog><![CDATA[Add output-safe parameter randomization and fix the Master Output title.]]></changelog>
+        <source>https://github.com/janschwartzmusic/lucky-spectral-filter/raw/fcaa434de5e81d74f28dc6c8a5ffe738a201e637/JSchwartz/JSchwartz_Simple_Spectral_Filter.jsfx</source>
       </version>
     </reapack>
   </category>

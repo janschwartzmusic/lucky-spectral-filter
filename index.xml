@@ -1,12 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="JSchwartz Lucky Spectral Filter" commit="3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b">
-<category name="JSchwartz"><reapack name="JSchwartz_Simple_Spectral_Filter.jsfx" type="effect" desc="JSchwartz Simple Spectral Filter"><metadata><description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+  <category name="JSchwartz">
+    <reapack name="JSchwartz_Simple_Spectral_Filter.jsfx" type="effect" desc="JSchwartz Simple Spectral Filter">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 Drawable spectral filtering, FFT damage, and stereo delays wrapped in a rainbow-leprechaun interface. Draw two curves, morph between them, and automate the filter motion from REAPER.\par}
 }
-]]></description><link rel="website">https://github.com/janschwartzmusic/lucky-spectral-filter</link></metadata><version name="1.0.0" author="JSchwartz" time="2026-08-14T19:26:17Z"><changelog><![CDATA[Initial public release.]]></changelog><source>https://github.com/janschwartzmusic/lucky-spectral-filter/raw/3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b/JSchwartz/JSchwartz_Simple_Spectral_Filter.jsfx</source></version></reapack></category><metadata><description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+]]></description>
+        <link rel="website">https://github.com/janschwartzmusic/lucky-spectral-filter</link>
+      </metadata>
+      <version name="1.0.0" author="JSchwartz" time="2026-08-14T19:26:17Z">
+        <changelog><![CDATA[Initial public release.]]></changelog>
+        <source>https://github.com/janschwartzmusic/lucky-spectral-filter/raw/3e5f6d9037aacfdb85d7d73b0fb7152d9262de5b/JSchwartz/JSchwartz_Simple_Spectral_Filter.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <metadata>
+    <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
@@ -44,5 +57,12 @@
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 macOS installer\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Download the repository or a release, then double-click {\f1 install.command}. After the first installation, {\f1 update.command} downloads the latest published JSFX from GitHub and installs it directly.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Repository: https://github.com/janschwartzmusic/lucky-spectral-filter\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Collaborating\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Jan and Colin share this repository directly. Keep {\f1 main} as the stable, published plug-in; make changes on personal branches and merge them through a pull request after testing the branch in REAPER. See {\field{\*\fldinst{HYPERLINK "CONTRIBUTING.md"}}{\fldrslt{\ul
+CONTRIBUTING.md
+}}}
+ for the exact commands and listening checks.\par}
 }
-]]></description></metadata></index>
+]]></description>
+  </metadata>
+</index>

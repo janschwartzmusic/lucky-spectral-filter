@@ -1,7 +1,7 @@
 // @description JSchwartz Simple Spectral Filter — Lucky Edition
-// @version 1.0.0
+// @version 2.6.0
 // @author JSchwartz
-// @changelog Initial public release.
+// @changelog Add output-safe parameter randomization and fix the Master Output title.
 // @about Drawable spectral filtering, FFT damage, and stereo delays wrapped in
 //   a rainbow-leprechaun interface. Draw two curves, morph between them, and
 //   automate the filter motion from REAPER.
@@ -10,37 +10,46 @@ desc:JSchwartz Simple Spectral Filter
 //tags: FFT filter spectral stereo delay drawable modulation
 //author: JSchwartz
 
-slider1:30<10,1000,1>Filter: Low Cut (Hz)
-slider2:18000<1000,24000,10>Filter: High Cut (Hz)
-slider3:1<0.1,4,0.1>Filter: Edge Width (octaves)
-slider4:0<-12,12,0.1>Filter: Spectral Tilt (dB/octave)
-slider5:0<-24,12,0.1>Filter: Output (dB)
-slider6:1<0,5,1{1024,2048,4096,8192,16384,32768}>Filter: FFT Size
-slider7:0<0,100,1>Damage: Transient Smear (%)
-slider8:0<0,100,1>Damage: Spectral Grain (%)
-slider9:0<0,100,1>Damage: Phase Scatter (%)
-slider10:0<0,4,1>Damage: Frame Repeat (frames)
-slider11:0<0,100,0.1>Drawing: Morph A to B (%)
-slider12:0<-4,4,0.01>Drawing: Shift (octaves)
-slider13:0<0,4,0.01>Drawing: Auto Sweep Depth (octaves)
-slider14:0.2<0,10,0.01>Drawing: Auto Sweep Rate (Hz)
-slider15:220<1,2000,1>Pre Delay: Left Time (ms)
-slider16:330<1,2000,1>Pre Delay: Right Time (ms)
-slider17:35<0,95,0.1>Pre Delay: Feedback (%)
-slider18:50<0,100,0.1>Pre Delay: Crossfeed / Ping-Pong (%)
-slider19:20<0,100,0.1>Pre Delay: HF Damping (%)
-slider20:0<0,100,0.1>Pre Delay: Mix (%)
-slider21:375<1,2000,1>Post Delay: Left Time (ms)
-slider22:500<1,2000,1>Post Delay: Right Time (ms)
-slider23:40<0,95,0.1>Post Delay: Feedback (%)
-slider24:70<0,100,0.1>Post Delay: Crossfeed / Ping-Pong (%)
-slider25:25<0,100,0.1>Post Delay: HF Damping (%)
-slider26:0<0,100,0.1>Post Delay: Mix (%)
+slider1:30<10,1000,1>-Filter: Low Cut (Hz)
+slider2:18000<1000,24000,10>-Filter: High Cut (Hz)
+slider3:1<0.1,4,0.1>-Filter: Edge Width (octaves)
+slider4:0<-12,12,0.1>-Filter: Spectral Tilt (dB/octave)
+slider5:0<-24,12,0.1>-Filter: Output (dB)
+slider6:1<0,5,1{1024,2048,4096,8192,16384,32768}>-Filter: FFT Size
+slider7:0<0,100,1>-Damage: Transient Smear (%)
+slider8:0<0,100,1>-Damage: Spectral Grain (%)
+slider9:0<0,100,1>-Damage: Phase Scatter (%)
+slider10:0<0,4,1>-Damage: Frame Repeat (frames)
+slider11:0<0,100,0.1>-Drawing: Morph A to B (%)
+slider12:0<-4,4,0.01>-Drawing: Shift (octaves)
+slider13:0<0,4,0.01>-Drawing: Auto Sweep Depth (octaves)
+slider14:0.2<0,10,0.01>-Drawing: Auto Sweep Rate (Hz)
+slider15:220<1,2000,1>-Pre Delay: Left Time (ms)
+slider16:330<1,2000,1>-Pre Delay: Right Time (ms)
+slider17:35<0,95,0.1>-Pre Delay: Feedback (%)
+slider18:50<0,100,0.1>-Pre Delay: Crossfeed / Ping-Pong (%)
+slider19:20<0,100,0.1>-Pre Delay: HF Damping (%)
+slider20:0<0,100,0.1>-Pre Delay: Mix (%)
+slider21:375<1,2000,1>-Post Delay: Left Time (ms)
+slider22:500<1,2000,1>-Post Delay: Right Time (ms)
+slider23:40<0,95,0.1>-Post Delay: Feedback (%)
+slider24:70<0,100,0.1>-Post Delay: Crossfeed / Ping-Pong (%)
+slider25:25<0,100,0.1>-Post Delay: HF Damping (%)
+slider26:0<0,100,0.1>-Post Delay: Mix (%)
+slider27:0<0,100,0.1>-Pre Spectral: Saturation to Crush (%)
+slider28:0<0,100,0.1>-Pre Delay: Diffusion (%)
+slider29:0<0,100,0.1>-Post Delay: Diffusion (%)
+slider30:0<0,100,0.1>-Pre Spectral: Distortion Spread (%)
+slider31:6<0,60,0.1>-Distortion: Low Drive (dB)
+slider32:12<0,60,0.1>-Distortion: Mid Drive (dB)
+slider33:6<0,60,0.1>-Distortion: High Drive (dB)
 
 in_pin:left input
 in_pin:right input
 out_pin:left output
 out_pin:right output
+
+options:gfx_hz=60 no_meter
 
 @init
 
@@ -76,10 +85,29 @@ out_pin:right output
   delay_buffer_frames = ceil(srate * 2.05) + 8;
   pre_delay_buffer = 600000;
   post_delay_buffer = pre_delay_buffer + 2*delay_buffer_frames + 8;
+  diffusion_buffer_frames = ceil(srate * 0.06) + 8;
+  pre_diffusion_a_buffer = post_delay_buffer + 2*delay_buffer_frames + 8;
+  pre_diffusion_b_buffer = pre_diffusion_a_buffer + 2*diffusion_buffer_frames + 8;
+  post_diffusion_a_buffer = pre_diffusion_b_buffer + 2*diffusion_buffer_frames + 8;
+  post_diffusion_b_buffer = post_diffusion_a_buffer + 2*diffusion_buffer_frames + 8;
+  pre_diffusion_c_buffer = post_diffusion_b_buffer + 2*diffusion_buffer_frames + 8;
+  pre_diffusion_d_buffer = pre_diffusion_c_buffer + 2*diffusion_buffer_frames + 8;
+  post_diffusion_c_buffer = pre_diffusion_d_buffer + 2*diffusion_buffer_frames + 8;
+  post_diffusion_d_buffer = post_diffusion_c_buffer + 2*diffusion_buffer_frames + 8;
   memset(pre_delay_buffer, 0, 2*delay_buffer_frames);
   memset(post_delay_buffer, 0, 2*delay_buffer_frames);
+  memset(pre_diffusion_a_buffer, 0, 2*diffusion_buffer_frames);
+  memset(pre_diffusion_b_buffer, 0, 2*diffusion_buffer_frames);
+  memset(post_diffusion_a_buffer, 0, 2*diffusion_buffer_frames);
+  memset(post_diffusion_b_buffer, 0, 2*diffusion_buffer_frames);
+  memset(pre_diffusion_c_buffer, 0, 2*diffusion_buffer_frames);
+  memset(pre_diffusion_d_buffer, 0, 2*diffusion_buffer_frames);
+  memset(post_diffusion_c_buffer, 0, 2*diffusion_buffer_frames);
+  memset(post_diffusion_d_buffer, 0, 2*diffusion_buffer_frames);
   pre_write_frame = 0;
   post_write_frame = 0;
+  pre_diffusion_write_frame = 0;
+  post_diffusion_write_frame = 0;
   pre_delay_left_current = 0;
   pre_delay_right_current = 0;
   post_delay_left_current = 0;
@@ -88,6 +116,18 @@ out_pin:right output
   pre_feedback_state_right = 0;
   post_feedback_state_left = 0;
   post_feedback_state_right = 0;
+  pre_fx_character = 0;
+  pre_fx_spread = 0;
+  pre_fx_filter_left = 0;
+  pre_fx_filter_right = 0;
+  pre_fx_low_state_left = 0;
+  pre_fx_low_state_right = 0;
+  pre_fx_high_state_left = 0;
+  pre_fx_high_state_right = 0;
+  pre_fx_hold_counter_left = 0;
+  pre_fx_hold_counter_right = 0;
+  pre_fx_held_left = 0;
+  pre_fx_held_right = 0;
   auto_sweep_phase = 0;
 
   pdc_bot_ch = 0;
@@ -131,7 +171,11 @@ out_pin:right output
 
       tilt_db = tilt_db_per_octave * log(frequency / 1000) / log(2);
       tilt_db = min(36, max(-60, tilt_db));
-      draw_db = shape_db_at(frequency);
+      // Expand the hand-drawn response around 0 dB without moving its neutral point.
+      // The asymmetric limits keep boosts bold but controlled while allowing
+      // near-silent spectral notches at the bottom of the drawing area.
+      draw_db = shape_db_at(frequency) * 1.65;
+      draw_db = min(20, max(-96, draw_db));
       gain *= exp((tilt_db + draw_db) * log(10) / 20);
     );
 
@@ -208,7 +252,70 @@ out_pin:right output
       + buffer[2*index_b + channel]*fraction;
   );
 
-@slider
+  function diffuse_allpass(buffer, write_frame, buffer_frames,
+                           delay_frames, channel, input, coefficient)
+    local(read_frame, delayed, output) (
+    read_frame = write_frame - delay_frames;
+    read_frame < 0 ? read_frame += buffer_frames;
+    delayed = buffer[2*read_frame + channel];
+    output = delayed - coefficient*input;
+    buffer[2*write_frame + channel] = input + coefficient*output;
+    output;
+  );
+
+  function distort_band(input, gain, fuzz)
+    local(driven, soft_shape, hard_shape) (
+    driven = input*gain;
+    soft_shape = driven/(1 + abs(driven));
+    hard_shape = min(1, max(-1, driven));
+    soft_shape*(1 - fuzz) + hard_shape*fuzz;
+  );
+
+  function random_stepped(minimum, maximum, step)
+    local(value) (
+    value = minimum + rand(1)*(maximum - minimum);
+    step > 0 ? value = minimum
+                     + floor((value - minimum)/step + 0.5)*step;
+    min(maximum, max(minimum, value));
+  );
+
+  function randomize_parameters() (
+    slider_automate(slider1 = random_stepped(10, 1000, 1));
+    slider_automate(slider2 = random_stepped(1000, 24000, 10));
+    slider_automate(slider3 = random_stepped(0.1, 4, 0.1));
+    slider_automate(slider4 = random_stepped(-12, 12, 0.1));
+    // slider5 is Master Output and is deliberately never randomized.
+    slider_automate(slider6 = random_stepped(0, 5, 1));
+    slider_automate(slider7 = random_stepped(0, 100, 1));
+    slider_automate(slider8 = random_stepped(0, 100, 1));
+    slider_automate(slider9 = random_stepped(0, 100, 1));
+    slider_automate(slider10 = random_stepped(0, 4, 1));
+    slider_automate(slider11 = random_stepped(0, 100, 0.1));
+    slider_automate(slider12 = random_stepped(-4, 4, 0.01));
+    slider_automate(slider13 = random_stepped(0, 4, 0.01));
+    slider_automate(slider14 = random_stepped(0, 10, 0.01));
+    slider_automate(slider15 = random_stepped(1, 2000, 1));
+    slider_automate(slider16 = random_stepped(1, 2000, 1));
+    slider_automate(slider17 = random_stepped(0, 95, 0.1));
+    slider_automate(slider18 = random_stepped(0, 100, 0.1));
+    slider_automate(slider19 = random_stepped(0, 100, 0.1));
+    slider_automate(slider20 = random_stepped(0, 100, 0.1));
+    slider_automate(slider21 = random_stepped(1, 2000, 1));
+    slider_automate(slider22 = random_stepped(1, 2000, 1));
+    slider_automate(slider23 = random_stepped(0, 95, 0.1));
+    slider_automate(slider24 = random_stepped(0, 100, 0.1));
+    slider_automate(slider25 = random_stepped(0, 100, 0.1));
+    slider_automate(slider26 = random_stepped(0, 100, 0.1));
+    slider_automate(slider27 = random_stepped(0, 100, 0.1));
+    slider_automate(slider28 = random_stepped(0, 100, 0.1));
+    slider_automate(slider29 = random_stepped(0, 100, 0.1));
+    slider_automate(slider30 = random_stepped(0, 100, 0.1));
+    slider_automate(slider31 = random_stepped(0, 60, 0.1));
+    slider_automate(slider32 = random_stepped(0, 60, 0.1));
+    slider_automate(slider33 = random_stepped(0, 60, 0.1));
+  );
+
+  function refresh_control_state() (
 
   low_hz = max(10, min(slider1, srate * 0.49));
   high_hz = max(low_hz, min(slider2, srate * 0.49));
@@ -236,6 +343,17 @@ out_pin:right output
   pre_damping_cutoff = min(srate*0.45, pre_damping_cutoff);
   pre_damping_alpha = slider19 <= 0 ? 1 : 1 - exp(-2*$pi*pre_damping_cutoff/srate);
   pre_mix = slider20 / 100;
+  pre_diffusion_amount = slider28 / 100;
+  pre_diffusion_insert = smooth_step(min(1, pre_diffusion_amount*20));
+  pre_diffusion_coefficient = 0.22 + sqrt(pre_diffusion_amount)*0.56;
+  pre_diffusion_a_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0023)));
+  pre_diffusion_a_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0037)));
+  pre_diffusion_b_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0057)));
+  pre_diffusion_b_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0079)));
+  pre_diffusion_c_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0097)));
+  pre_diffusion_c_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0127)));
+  pre_diffusion_d_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0149)));
+  pre_diffusion_d_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0191)));
 
   post_delay_left_target = min(delay_buffer_frames - 2, max(1, slider21*srate/1000));
   post_delay_right_target = min(delay_buffer_frames - 2, max(1, slider22*srate/1000));
@@ -245,6 +363,24 @@ out_pin:right output
   post_damping_cutoff = min(srate*0.45, post_damping_cutoff);
   post_damping_alpha = slider25 <= 0 ? 1 : 1 - exp(-2*$pi*post_damping_cutoff/srate);
   post_mix = slider26 / 100;
+  post_diffusion_amount = slider29 / 100;
+  post_diffusion_insert = smooth_step(min(1, post_diffusion_amount*20));
+  post_diffusion_coefficient = 0.22 + sqrt(post_diffusion_amount)*0.56;
+  post_diffusion_a_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0031)));
+  post_diffusion_a_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0047)));
+  post_diffusion_b_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0067)));
+  post_diffusion_b_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0091)));
+  post_diffusion_c_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0113)));
+  post_diffusion_c_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0149)));
+  post_diffusion_d_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0173)));
+  post_diffusion_d_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0239)));
+  pre_fx_character_target = slider27 / 100;
+  pre_fx_spread_target = slider30 / 100;
+  pre_fx_low_xover = 1 - exp(-2*$pi*250/srate);
+  pre_fx_high_xover = 1 - exp(-2*$pi*2500/srate);
+  pre_fx_low_band_gain = exp(slider31*log(10)/20);
+  pre_fx_mid_band_gain = exp(slider32*log(10)/20);
+  pre_fx_high_band_gain = exp(slider33*log(10)/20);
 
   pre_delay_left_current <= 0 ? pre_delay_left_current = pre_delay_left_target;
   pre_delay_right_current <= 0 ? pre_delay_right_current = pre_delay_right_target;
@@ -276,6 +412,18 @@ out_pin:right output
     pdc_delay = fftsize;
     ext_tail_size = -1;
   );
+  );
+
+@slider
+
+  refresh_control_state();
+
+@block
+
+  // Custom @gfx controls update slider values outside REAPER's stock UI.
+  // Refresh every derived coefficient and target once per audio block so the
+  // sound always follows the visible knobs immediately.
+  refresh_control_state();
 
 @serialize
 
@@ -304,6 +452,41 @@ out_pin:right output
   pre_wet_right = delay_read(pre_delay_buffer, pre_write_frame,
                              pre_delay_right_current, delay_buffer_frames, 1);
 
+  // Four staggered stereo all-pass stages turn discrete echoes into a dense
+  // cloud. Above the bottom five percent of the knob range it is a serial,
+  // magnitude-flat insert rather than a parallel phase blend, avoiding the
+  // comb filtering and low-mid buildup of the previous implementation.
+  pre_diffused_a_left = diffuse_allpass(pre_diffusion_a_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_a_left, 0, pre_wet_left, pre_diffusion_coefficient);
+  pre_diffused_a_right = diffuse_allpass(pre_diffusion_a_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_a_right, 1, pre_wet_right, pre_diffusion_coefficient);
+  pre_diffused_b_left = diffuse_allpass(pre_diffusion_b_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_b_left, 0, pre_diffused_a_left, pre_diffusion_coefficient);
+  pre_diffused_b_right = diffuse_allpass(pre_diffusion_b_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_b_right, 1, pre_diffused_a_right, pre_diffusion_coefficient);
+  pre_diffused_c_left = diffuse_allpass(pre_diffusion_c_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_c_left, 0, pre_diffused_b_left, pre_diffusion_coefficient);
+  pre_diffused_c_right = diffuse_allpass(pre_diffusion_c_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_c_right, 1, pre_diffused_b_right, pre_diffusion_coefficient);
+  pre_diffused_d_left = diffuse_allpass(pre_diffusion_d_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_d_left, 0, pre_diffused_c_left, pre_diffusion_coefficient);
+  pre_diffused_d_right = diffuse_allpass(pre_diffusion_d_buffer,
+    pre_diffusion_write_frame, diffusion_buffer_frames,
+    pre_diffusion_d_right, 1, pre_diffused_c_right, pre_diffusion_coefficient);
+  pre_diffusion_write_frame += 1;
+  pre_diffusion_write_frame >= diffusion_buffer_frames ? pre_diffusion_write_frame = 0;
+  pre_wet_left = pre_wet_left*(1 - pre_diffusion_insert)
+                 + pre_diffused_d_left*pre_diffusion_insert;
+  pre_wet_right = pre_wet_right*(1 - pre_diffusion_insert)
+                  + pre_diffused_d_right*pre_diffusion_insert;
+
   pre_feedback_state_left += (pre_wet_left - pre_feedback_state_left)*pre_damping_alpha;
   pre_feedback_state_right += (pre_wet_right - pre_feedback_state_right)*pre_damping_alpha;
   pre_feedback_to_left = pre_feedback_state_left*(1 - pre_crossfeed)
@@ -317,6 +500,124 @@ out_pin:right output
 
   input_left = chain_input_left*(1 - pre_mix) + pre_wet_left*pre_mix;
   input_right = chain_input_right*(1 - pre_mix) + pre_wet_right*pre_mix;
+
+  // Cloudbox-style reconstructing crossover: low below 250 Hz, mid between
+  // 250 Hz and 2.5 kHz, and high above 2.5 kHz. Since mid is the residual,
+  // the three clean bands sum exactly to the input.
+  pre_fx_character += (pre_fx_character_target - pre_fx_character) * 0.002;
+  pre_fx_spread += (pre_fx_spread_target - pre_fx_spread) * 0.002;
+  pre_fx_low_state_left += pre_fx_low_xover*(input_left - pre_fx_low_state_left);
+  pre_fx_low_state_right += pre_fx_low_xover*(input_right - pre_fx_low_state_right);
+  pre_fx_high_state_left += pre_fx_high_xover*(input_left - pre_fx_high_state_left);
+  pre_fx_high_state_right += pre_fx_high_xover*(input_right - pre_fx_high_state_right);
+  pre_fx_low_left = pre_fx_low_state_left;
+  pre_fx_low_right = pre_fx_low_state_right;
+  pre_fx_high_left = input_left - pre_fx_high_state_left;
+  pre_fx_high_right = input_right - pre_fx_high_state_right;
+  pre_fx_mid_left = input_left - pre_fx_low_left - pre_fx_high_left;
+  pre_fx_mid_right = input_right - pre_fx_low_right - pre_fx_high_right;
+
+  // Character zero remains an exact clean bypass. Above zero the three bands
+  // saturate independently, then the recombined signal moves into fuzz and
+  // finally the restrained Cloudbox-style crusher.
+  pre_fx_character > 0.00001 ? (
+    pre_fx_dry_left = input_left;
+    pre_fx_dry_right = input_right;
+    pre_fx_base_fuzz = min(1, pre_fx_character*2);
+    pre_fx_base_crush = max(0, (pre_fx_character - 0.5)*2);
+    pre_fx_base_wet = min(1, pre_fx_character*4);
+    pre_fx_fuzz_left = max(0, pre_fx_base_fuzz - pre_fx_spread*0.85);
+    pre_fx_fuzz_right = min(1, pre_fx_base_fuzz + pre_fx_spread*0.85);
+    pre_fx_crush_left = max(0, pre_fx_base_crush - pre_fx_spread*0.90);
+    pre_fx_crush_right = min(1, pre_fx_base_crush
+                             + pre_fx_spread*(0.30 + pre_fx_character*0.55));
+    pre_fx_drive_db_left = 3 + pre_fx_character*27 - pre_fx_spread*3;
+    pre_fx_drive_db_right = 3 + pre_fx_character*27 + pre_fx_spread*3;
+    pre_fx_drive_left = exp(pre_fx_drive_db_left*log(10)/20);
+    pre_fx_drive_right = exp(pre_fx_drive_db_right*log(10)/20);
+    pre_fx_trim = exp((-3 - pre_fx_character*9)*log(10)/20);
+
+    pre_fx_dist_low_left = distort_band(pre_fx_low_left,
+      pre_fx_drive_left*pre_fx_low_band_gain, pre_fx_fuzz_left);
+    pre_fx_dist_low_right = distort_band(pre_fx_low_right,
+      pre_fx_drive_right*pre_fx_low_band_gain, pre_fx_fuzz_right);
+    pre_fx_dist_mid_left = distort_band(pre_fx_mid_left,
+      pre_fx_drive_left*pre_fx_mid_band_gain, pre_fx_fuzz_left);
+    pre_fx_dist_mid_right = distort_band(pre_fx_mid_right,
+      pre_fx_drive_right*pre_fx_mid_band_gain, pre_fx_fuzz_right);
+    pre_fx_dist_high_left = distort_band(pre_fx_high_left,
+      pre_fx_drive_left*pre_fx_high_band_gain, pre_fx_fuzz_left);
+    pre_fx_dist_high_right = distort_band(pre_fx_high_right,
+      pre_fx_drive_right*pre_fx_high_band_gain, pre_fx_fuzz_right);
+
+    // Width is frequency-conscious: bass stays anchored while mid and high
+    // character differences grow dramatically. The dry path is never widened.
+    pre_fx_band_mid = (pre_fx_dist_low_left + pre_fx_dist_low_right)*0.5;
+    pre_fx_band_side = (pre_fx_dist_low_left - pre_fx_dist_low_right)*0.5
+                       * (1 + pre_fx_spread*0.75);
+    pre_fx_wide_low_left = pre_fx_band_mid + pre_fx_band_side;
+    pre_fx_wide_low_right = pre_fx_band_mid - pre_fx_band_side;
+
+    pre_fx_band_mid = (pre_fx_dist_mid_left + pre_fx_dist_mid_right)*0.5;
+    pre_fx_band_side = (pre_fx_dist_mid_left - pre_fx_dist_mid_right)*0.5
+                       * (1 + pre_fx_spread*4.00);
+    pre_fx_wide_mid_left = pre_fx_band_mid + pre_fx_band_side;
+    pre_fx_wide_mid_right = pre_fx_band_mid - pre_fx_band_side;
+
+    pre_fx_band_mid = (pre_fx_dist_high_left + pre_fx_dist_high_right)*0.5;
+    pre_fx_band_side = (pre_fx_dist_high_left - pre_fx_dist_high_right)*0.5
+                       * (1 + pre_fx_spread*7.00);
+    pre_fx_wide_high_left = pre_fx_band_mid + pre_fx_band_side;
+    pre_fx_wide_high_right = pre_fx_band_mid - pre_fx_band_side;
+
+    pre_fx_spread_norm = 1/(1 + pre_fx_spread*0.35);
+    pre_fx_processed_left = (pre_fx_wide_low_left + pre_fx_wide_mid_left
+                             + pre_fx_wide_high_left)*pre_fx_spread_norm;
+    pre_fx_processed_right = (pre_fx_wide_low_right + pre_fx_wide_mid_right
+                              + pre_fx_wide_high_right)*pre_fx_spread_norm;
+
+    pre_fx_steps_left = max(16, floor(128 - pre_fx_crush_left*112));
+    pre_fx_hold_period_left = 1 + floor(pre_fx_crush_left*5);
+    pre_fx_hold_counter_left <= 0 ? (
+      pre_fx_held_left = floor(pre_fx_processed_left*pre_fx_steps_left + 0.5)
+                         / pre_fx_steps_left;
+      pre_fx_hold_counter_left = pre_fx_hold_period_left;
+    ) : pre_fx_hold_counter_left -= 1;
+    pre_fx_processed_left = pre_fx_processed_left*(1 - pre_fx_crush_left)
+                            + pre_fx_held_left*pre_fx_crush_left;
+
+    pre_fx_steps_right = max(16, floor(128 - pre_fx_crush_right*112));
+    pre_fx_hold_period_right = 1 + floor(pre_fx_crush_right*5);
+    pre_fx_hold_counter_right <= 0 ? (
+      pre_fx_held_right = floor(pre_fx_processed_right*pre_fx_steps_right + 0.5)
+                          / pre_fx_steps_right;
+      pre_fx_hold_counter_right = pre_fx_hold_period_right;
+    ) : pre_fx_hold_counter_right -= 1;
+    pre_fx_processed_right = pre_fx_processed_right*(1 - pre_fx_crush_right)
+                             + pre_fx_held_right*pre_fx_crush_right;
+
+    pre_fx_cutoff_left = min(srate*0.45,
+                             (18000 - pre_fx_crush_left*6000)
+                             * (1 - pre_fx_spread*0.15));
+    pre_fx_cutoff_right = min(srate*0.45, 18000 - pre_fx_crush_right*6000);
+    pre_fx_cut_coefficient_left = 1 - exp(-2*$pi*pre_fx_cutoff_left/srate);
+    pre_fx_cut_coefficient_right = 1 - exp(-2*$pi*pre_fx_cutoff_right/srate);
+    pre_fx_filter_left += pre_fx_cut_coefficient_left
+                          * (pre_fx_processed_left - pre_fx_filter_left);
+    pre_fx_filter_right += pre_fx_cut_coefficient_right
+                           * (pre_fx_processed_right - pre_fx_filter_right);
+    pre_fx_processed_left = pre_fx_filter_left*pre_fx_trim;
+    pre_fx_processed_right = pre_fx_filter_right*pre_fx_trim;
+    input_left = pre_fx_dry_left*(1 - pre_fx_base_wet)
+                 + pre_fx_processed_left*pre_fx_base_wet;
+    input_right = pre_fx_dry_right*(1 - pre_fx_base_wet)
+                  + pre_fx_processed_right*pre_fx_base_wet;
+  ) : (
+    pre_fx_filter_left = input_left;
+    pre_fx_filter_right = input_right;
+    pre_fx_hold_counter_left = 0;
+    pre_fx_hold_counter_right = 0;
+  );
 
   // FFT overlap-add stage.
   position >= fftsize ? (
@@ -372,6 +673,36 @@ out_pin:right output
                              post_delay_left_current, delay_buffer_frames, 0);
   post_wet_right = delay_read(post_delay_buffer, post_write_frame,
                               post_delay_right_current, delay_buffer_frames, 1);
+  post_diffused_a_left = diffuse_allpass(post_diffusion_a_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_a_left, 0, post_wet_left, post_diffusion_coefficient);
+  post_diffused_a_right = diffuse_allpass(post_diffusion_a_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_a_right, 1, post_wet_right, post_diffusion_coefficient);
+  post_diffused_b_left = diffuse_allpass(post_diffusion_b_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_b_left, 0, post_diffused_a_left, post_diffusion_coefficient);
+  post_diffused_b_right = diffuse_allpass(post_diffusion_b_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_b_right, 1, post_diffused_a_right, post_diffusion_coefficient);
+  post_diffused_c_left = diffuse_allpass(post_diffusion_c_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_c_left, 0, post_diffused_b_left, post_diffusion_coefficient);
+  post_diffused_c_right = diffuse_allpass(post_diffusion_c_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_c_right, 1, post_diffused_b_right, post_diffusion_coefficient);
+  post_diffused_d_left = diffuse_allpass(post_diffusion_d_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_d_left, 0, post_diffused_c_left, post_diffusion_coefficient);
+  post_diffused_d_right = diffuse_allpass(post_diffusion_d_buffer,
+    post_diffusion_write_frame, diffusion_buffer_frames,
+    post_diffusion_d_right, 1, post_diffused_c_right, post_diffusion_coefficient);
+  post_diffusion_write_frame += 1;
+  post_diffusion_write_frame >= diffusion_buffer_frames ? post_diffusion_write_frame = 0;
+  post_wet_left = post_wet_left*(1 - post_diffusion_insert)
+                  + post_diffused_d_left*post_diffusion_insert;
+  post_wet_right = post_wet_right*(1 - post_diffusion_insert)
+                   + post_diffused_d_right*post_diffusion_insert;
   post_feedback_state_left += (post_wet_left - post_feedback_state_left)*post_damping_alpha;
   post_feedback_state_right += (post_wet_right - post_feedback_state_right)*post_damping_alpha;
   post_feedback_to_left = post_feedback_state_left*(1 - post_crossfeed)
@@ -386,7 +717,7 @@ out_pin:right output
   spl0 = spectral_left*(1 - post_mix) + post_wet_left*post_mix;
   spl1 = spectral_right*(1 - post_mix) + post_wet_right*post_mix;
 
-@gfx 760 440
+@gfx 1160 830
 
   function set_rainbow_color(position, alpha)
     local(wrapped, segment, fraction) (
@@ -424,6 +755,34 @@ out_pin:right output
     gfx_rect(x, y + size*0.65, size, size*0.16);
   );
 
+  function draw_leprechaun_face(center_x, center_y, size) (
+    draw_leprechaun_hat(center_x - size*1.05, center_y - size*1.62, size*2.1);
+    gfx_r = 1.00; gfx_g = 0.70; gfx_b = 0.42; gfx_a = 1;
+    gfx_circle(center_x, center_y, size, 1, 1);
+    gfx_r = 0.92; gfx_g = 0.25; gfx_b = 0.035; gfx_a = 1;
+    gfx_rect(center_x - size, center_y + size*0.42, size*2, size*0.72);
+    gfx_rect(center_x - size*0.72, center_y + size*0.96, size*1.44, size*0.42);
+    gfx_r = 0.02; gfx_g = 0.08; gfx_b = 0.03; gfx_a = 1;
+    gfx_rect(center_x - size*0.52, center_y - size*0.25, size*0.22, size*0.22);
+    gfx_rect(center_x + size*0.30, center_y - size*0.25, size*0.22, size*0.22);
+    gfx_r = 1; gfx_g = 0.44; gfx_b = 0.18; gfx_a = 1;
+    gfx_rect(center_x - size*0.12, center_y, size*0.30, size*0.26);
+    gfx_r = 1; gfx_g = 0.94; gfx_b = 0.68; gfx_a = 1;
+    gfx_rect(center_x - size*0.42, center_y + size*0.36, size*0.84, size*0.18);
+  );
+
+  function draw_pixel_mushroom(x, y, scale) (
+    gfx_r = 0.90; gfx_g = 0.06; gfx_b = 0.30; gfx_a = 1;
+    gfx_rect(x + scale*2, y, scale*6, scale*2);
+    gfx_rect(x, y + scale*2, scale*10, scale*3);
+    gfx_r = 1; gfx_g = 0.90; gfx_b = 0.56; gfx_a = 1;
+    gfx_rect(x + scale*2, y + scale, scale, scale);
+    gfx_rect(x + scale*7, y + scale*2, scale, scale);
+    gfx_rect(x + scale*4, y + scale*5, scale*3, scale*4);
+    gfx_r = 0.42; gfx_g = 0.18; gfx_b = 0.04; gfx_a = 1;
+    gfx_rect(x + scale*3, y + scale*8, scale*5, scale);
+  );
+
   function draw_pot_of_gold(center_x, bottom_y, size) local(coin) (
     coin = 0;
     loop(7,
@@ -442,46 +801,188 @@ out_pin:right output
     gfx_rect(center_x - size*0.54, bottom_y - size*0.67, size*1.08, size*0.16);
   );
 
-  gfx_clear = 0x031b0d;
+  function draw_pixel_rainbow(x, y, width, height, scale, alpha)
+    local(band, inset) (
+    band = 0;
+    loop(7,
+      inset = band * scale;
+      set_rainbow_color(band / 7, alpha);
+      gfx_rect(x + inset, y + inset, width - inset*2, scale);
+      gfx_rect(x + inset, y + inset, scale, height - inset);
+      gfx_rect(x + width - inset - scale, y + inset, scale, height - inset);
+      band += 1;
+    );
+  );
+
+  function draw_pixel_sparkle(x, y, size, red, green, blue) (
+    gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = 0.58;
+    gfx_rect(x - size*2, y, size*5, size);
+    gfx_rect(x, y - size*2, size, size*5);
+    gfx_r = min(1, red*1.25 + 0.08); gfx_g = min(1, green*1.25 + 0.08);
+    gfx_b = min(1, blue*1.25 + 0.08); gfx_a = 1;
+    gfx_rect(x, y, size, size);
+  );
+
+  function draw_gold_coin(x, y, size) (
+    gfx_r = 0.55; gfx_g = 0.24; gfx_b = 0.01; gfx_a = 0.88;
+    gfx_circle(x + 2, y + 3, size, 1, 1);
+    gfx_r = 1; gfx_g = 0.70; gfx_b = 0.03; gfx_a = 1;
+    gfx_circle(x, y, size, 1, 1);
+    gfx_r = 1; gfx_g = 0.94; gfx_b = 0.30; gfx_a = 0.92;
+    gfx_rect(x - size*0.45, y - size*0.55, size*0.42, size*0.22);
+  );
+
+  function draw_pixel_panel(x, y, width, height, red, green, blue, title)
+    local(stripe) (
+    gfx_r = 0.005; gfx_g = 0.035; gfx_b = 0.014; gfx_a = 0.78;
+    gfx_rect(x + 5, y + 6, width, height);
+    gfx_r = red*0.42; gfx_g = green*0.42; gfx_b = blue*0.42; gfx_a = 0.98;
+    gfx_rect(x, y, width, height);
+    gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = 0.90;
+    gfx_rect(x + 4, y + 4, width - 8, height - 8);
+    gfx_r = min(1, red*1.30 + 0.08); gfx_g = min(1, green*1.30 + 0.08);
+    gfx_b = min(1, blue*1.30 + 0.08); gfx_a = 0.76;
+    gfx_rect(x + 4, y + 4, width - 8, 3);
+    gfx_rect(x + 4, y + 4, 3, height - 8);
+    gfx_r = red*0.26; gfx_g = green*0.26; gfx_b = blue*0.26; gfx_a = 0.72;
+    gfx_rect(x + 7, y + height - 8, width - 14, 4);
+    stripe = 0;
+    loop(max(1, floor(width / 18)),
+      gfx_a = stripe % 2 ? 0.045 : 0.09;
+      gfx_rect(x + 7 + stripe*18, y + 26, 9, height - 36);
+      stripe += 1;
+    );
+    gfx_setfont(5, "Silom", 13, 'b');
+    gfx_r = 0.015; gfx_g = 0.055; gfx_b = 0.018; gfx_a = 1;
+    gfx_x = x + 14; gfx_y = y + 10; gfx_drawstr(title);
+    gfx_x = x + 15; gfx_y = y + 10; gfx_drawstr(title);
+  );
+
+  function themed_knob(index, x, y, minimum, maximum, step, label, red, green, blue)
+    local(value, normalized, hover, new_value, angle, display_value) (
+    value = slider(index);
+    normalized = (value - minimum) / max(0.0000001, maximum - minimum);
+    hover = mouse_x >= x - 30 && mouse_x <= x + 30
+            && mouse_y >= y - 30 && mouse_y <= y + 30;
+    mouse_down && !last_mouse_down && hover ? (
+      active_knob = index;
+      knob_drag_origin_y = mouse_y;
+      knob_drag_origin_value = value;
+    );
+    mouse_down && active_knob == index ? (
+      new_value = knob_drag_origin_value
+                  + (knob_drag_origin_y - mouse_y) * (maximum - minimum) / 170;
+      step > 0 ? new_value = floor(new_value / step + 0.5) * step;
+      new_value = min(maximum, max(minimum, new_value));
+      slider_automate(slider(index) = new_value);
+      value = new_value;
+      normalized = (value - minimum) / max(0.0000001, maximum - minimum);
+    );
+
+    // Pixel shadow, colored bezel, stepped highlights, and a bright gold needle.
+    gfx_r = 0.005; gfx_g = 0.025; gfx_b = 0.012; gfx_a = 0.82;
+    gfx_circle(x + 4, y + 5, 27, 1, 1);
+    gfx_r = red*0.38; gfx_g = green*0.38; gfx_b = blue*0.38; gfx_a = 1;
+    gfx_circle(x, y, 27, 1, 1);
+    gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = hover || active_knob == index ? 1 : 0.84;
+    gfx_circle(x, y, 23, 1, 1);
+    gfx_r = 0.018; gfx_g = 0.075; gfx_b = 0.032; gfx_a = 1;
+    gfx_circle(x, y, 17, 1, 1);
+    gfx_r = min(1, red*1.35 + 0.08); gfx_g = min(1, green*1.35 + 0.08);
+    gfx_b = min(1, blue*1.35 + 0.08); gfx_a = 0.94;
+    gfx_rect(x - 12, y - 15, 7, 4); gfx_rect(x - 16, y - 10, 4, 7);
+    angle = $pi * (0.75 + normalized * 1.5);
+    gfx_r = 1; gfx_g = 0.84; gfx_b = 0.18; gfx_a = 1;
+    gfx_line(x, y, x + cos(angle)*18, y + sin(angle)*18, 1);
+    gfx_rect(x - 2, y - 2, 4, 4);
+
+    gfx_setfont(6, "Silom", 10, 'b');
+    gfx_r = 0.012; gfx_g = 0.045; gfx_b = 0.016; gfx_a = 1;
+    gfx_x = x - 42; gfx_y = y + 32; gfx_drawstr(label);
+    gfx_x = x - 41; gfx_y = y + 32; gfx_drawstr(label);
+    gfx_x = x - 24; gfx_y = y + 45;
+    index == 6 ? (
+      display_value = 2 ^ ((value | 0) + 10);
+      gfx_drawnumber(display_value, 0);
+    ) : step >= 1 ? gfx_drawnumber(value, 0)
+                  : step >= 0.1 ? gfx_drawnumber(value, 1)
+                                : gfx_drawnumber(value, 2);
+  );
+
+  gfx_clear = 0x021308;
   margin_left = 58;
   margin_right = 18;
-  margin_top = 72;
-  margin_bottom = 58;
+  margin_top = 92;
+  margin_bottom = 470;
   graph_width = gfx_w - margin_left - margin_right;
   graph_height = gfx_h - margin_top - margin_bottom;
+
+  // Layered pixel countryside: deep felt sky, checker texture, and rolling hills.
+  gfx_r = 0.008; gfx_g = 0.105; gfx_b = 0.040; gfx_a = 1;
+  gfx_rect(0, 0, gfx_w, gfx_h);
+  texture_row = 0;
+  loop(24,
+    texture_column = 0;
+    loop(34,
+      (texture_row + texture_column) % 2 ? (
+        gfx_r = 0.03; gfx_g = 0.20; gfx_b = 0.075; gfx_a = 0.10;
+        gfx_rect(texture_column*36, 74 + texture_row*32, 18, 16);
+      );
+      texture_column += 1;
+    );
+    texture_row += 1;
+  );
+  gfx_r = 0.02; gfx_g = 0.26; gfx_b = 0.085; gfx_a = 0.86;
+  gfx_circle(130, 835, 360, 1, 1); gfx_circle(570, 870, 430, 1, 1); gfx_circle(1050, 840, 340, 1, 1);
+  gfx_r = 0.04; gfx_g = 0.38; gfx_b = 0.12; gfx_a = 0.30;
+  gfx_rect(0, 790, gfx_w, 40);
 
   // Seven-color lucky rainbow ribbon.
   rainbow_strip = 0;
   loop(7,
     set_rainbow_color(rainbow_strip / 7, 1);
-    gfx_rect(0, rainbow_strip*2, gfx_w, 2);
+    gfx_rect(0, rainbow_strip*3, gfx_w, 3);
     rainbow_strip += 1;
   );
 
-  draw_leprechaun_hat(14, 19, 43);
-  gfx_setfont(1, "Arial", 18, 'b');
+  draw_leprechaun_hat(14, 27, 47);
+  gfx_setfont(1, "Silom", 26, 'b');
+  gfx_r = 0.005; gfx_g = 0.025; gfx_b = 0.01; gfx_a = 0.9;
+  gfx_x = 84; gfx_y = 29; gfx_drawstr("LUCKY SPECTRAL LEPRECHAUN");
   gfx_r = 1; gfx_g = 0.78; gfx_b = 0.08; gfx_a = 1;
-  gfx_x = 70; gfx_y = 21;
+  gfx_x = 81; gfx_y = 26;
   gfx_drawstr("LUCKY SPECTRAL LEPRECHAUN");
-  gfx_setfont(2, "Arial", 10, 'b');
+  gfx_x = 82; gfx_y = 26;
+  gfx_drawstr("LUCKY SPECTRAL LEPRECHAUN");
+  gfx_setfont(2, "Silom", 10, 'b');
   gfx_r = 0.28; gfx_g = 0.94; gfx_b = 0.40;
-  gfx_x = 71; gfx_y = 44;
-  gfx_drawstr("DRAW YOUR OWN POT O' FREQUENCY GOLD");
+  gfx_x = 83; gfx_y = 57;
+  gfx_drawstr("DRAW A POT O' FREQUENCY GOLD  //  EVERY CONTROL IS CUSTOM");
+  draw_pixel_rainbow(665, 29, 135, 45, 3, 0.94);
+  draw_pixel_sparkle(642, 40, 2, 1.00, 0.88, 0.18);
+  draw_pixel_sparkle(795, 56, 2, 0.48, 1.00, 0.72);
 
   // Shape selection, copy, and reset buttons.
-  button_y = 23;
+  button_y = 34;
   button_h = 30;
+  button_random_x = gfx_w - 350;
   button_a_x = gfx_w - 244;
   button_b_x = gfx_w - 202;
   button_copy_x = gfx_w - 160;
   button_flat_x = gfx_w - 94;
 
   left_down = mouse_cap & 1;
+  mouse_down = left_down;
   right_down = mouse_cap & 2;
   left_pressed = left_down && !last_left_down;
+  !left_down ? active_knob = 0;
   button_consumed = 0;
 
   left_pressed && mouse_y >= button_y && mouse_y < button_y + button_h ? (
+    mouse_x >= button_random_x && mouse_x < button_random_x + 96 ? (
+      randomize_parameters();
+      button_consumed = 1;
+    );
     mouse_x >= button_a_x && mouse_x < button_a_x + 36 ? (
       active_shape = 0; button_consumed = 1;
     );
@@ -502,7 +1003,12 @@ out_pin:right output
     );
   );
 
-  // Emerald-and-gold button rendering.
+  // Magenta randomizer plus emerald-and-gold drawing buttons.
+  random_hover = mouse_x >= button_random_x && mouse_x < button_random_x + 96
+                 && mouse_y >= button_y && mouse_y < button_y + button_h;
+  gfx_r = random_hover ? 1.00 : 0.76; gfx_g = random_hover ? 0.30 : 0.08;
+  gfx_b = random_hover ? 0.78 : 0.52; gfx_a = 1;
+  gfx_rect(button_random_x, button_y, 96, button_h);
   gfx_r = active_shape ? 0.03 : 0.10; gfx_g = active_shape ? 0.25 : 0.74;
   gfx_b = active_shape ? 0.08 : 0.20; gfx_a = 1;
   gfx_rect(button_a_x, button_y, 36, button_h);
@@ -513,6 +1019,10 @@ out_pin:right output
   gfx_rect(button_copy_x, button_y, 60, button_h);
   gfx_rect(button_flat_x, button_y, 76, button_h);
   gfx_r = 1; gfx_g = 0.75; gfx_b = 0.06;
+  gfx_line(button_random_x, button_y, button_random_x + 96, button_y);
+  gfx_line(button_random_x + 96, button_y, button_random_x + 96, button_y + button_h);
+  gfx_line(button_random_x + 96, button_y + button_h, button_random_x, button_y + button_h);
+  gfx_line(button_random_x, button_y + button_h, button_random_x, button_y);
   gfx_line(button_a_x, button_y, button_a_x + 36, button_y);
   gfx_line(button_a_x + 36, button_y, button_a_x + 36, button_y + button_h);
   gfx_line(button_a_x + 36, button_y + button_h, button_a_x, button_y + button_h);
@@ -529,13 +1039,17 @@ out_pin:right output
   gfx_line(button_flat_x + 76, button_y, button_flat_x + 76, button_y + button_h);
   gfx_line(button_flat_x + 76, button_y + button_h, button_flat_x, button_y + button_h);
   gfx_line(button_flat_x, button_y + button_h, button_flat_x, button_y);
-  gfx_setfont(3, "Arial", 11, 'b');
+  gfx_setfont(3, "Silom", 11, 'b');
   gfx_r = 1; gfx_g = 0.91; gfx_b = 0.45;
+  gfx_x = button_random_x + 17; gfx_y = button_y + 8; gfx_drawstr("RANDOM");
   gfx_x = button_a_x + 13; gfx_y = button_y + 8; gfx_drawstr("A");
   gfx_x = button_b_x + 13; gfx_y = button_y + 8; gfx_drawstr("B");
   gfx_x = button_copy_x + 10; gfx_y = button_y + 8; gfx_drawstr("COPY");
   gfx_x = button_flat_x + 17; gfx_y = button_y + 8; gfx_drawstr("FLAT");
 
+  // An unapologetically oversized pixel-rainbow portal frames the spectrum.
+  draw_pixel_rainbow(margin_left - 10, margin_top - 10,
+                     graph_width + 20, graph_height + 20, 2, 0.92);
   // Deep emerald graph with transparent rainbow frequency bands.
   gfx_r = 0.008; gfx_g = 0.085; gfx_b = 0.035; gfx_a = 1;
   gfx_rect(margin_left, margin_top, graph_width, graph_height);
@@ -547,7 +1061,7 @@ out_pin:right output
     rainbow_band += 1;
   );
 
-  gfx_setfont(4, "Arial", 10);
+  gfx_setfont(4, "Silom", 9, 'b');
   grid_db = 12;
   loop(7,
     grid_y = margin_top + (12 - grid_db) / 72 * graph_height;
@@ -594,8 +1108,10 @@ out_pin:right output
     point > 0 ? (
       gfx_r = 0.20; gfx_g = 1; gfx_b = 0.30; gfx_a = active_shape ? 0.30 : 0.85;
       gfx_line(previous_x, previous_a_y, current_x, curve_a_y, 1);
+      gfx_line(previous_x, previous_a_y + 1, current_x, curve_a_y + 1, 1);
       gfx_r = 0.72; gfx_g = 0.22; gfx_b = 1; gfx_a = active_shape ? 0.85 : 0.30;
       gfx_line(previous_x, previous_b_y, current_x, curve_b_y, 1);
+      gfx_line(previous_x, previous_b_y + 1, current_x, curve_b_y + 1, 1);
     );
     previous_x = current_x;
     previous_a_y = curve_a_y;
@@ -616,8 +1132,9 @@ out_pin:right output
     point > 0 ? (
       set_rainbow_color(point / max(1, graph_width - 1), 1);
       gfx_line(previous_x, previous_y, current_x, current_y, 1);
-      gfx_r = 1; gfx_g = 0.82; gfx_b = 0.24; gfx_a = 0.34;
       gfx_line(previous_x, previous_y + 1, current_x, current_y + 1, 1);
+      gfx_r = 1; gfx_g = 0.82; gfx_b = 0.24; gfx_a = 0.30;
+      gfx_line(previous_x, previous_y + 2, current_x, current_y + 2, 1);
     );
     previous_x = current_x;
     previous_y = current_y;
@@ -627,7 +1144,7 @@ out_pin:right output
   // Left-drag draws the selected shape; right-drag erases toward 0 dB.
   inside_graph = mouse_x >= margin_left && mouse_x < margin_left + graph_width
                  && mouse_y >= margin_top && mouse_y < margin_top + graph_height;
-  inside_graph && (left_down || right_down) && !button_consumed ? (
+  inside_graph && (left_down || right_down) && !button_consumed && active_knob == 0 ? (
     draw_index = floor((mouse_x - margin_left) / graph_width * shape_point_count);
     draw_index = max(0, min(shape_point_count - 1, draw_index));
     draw_value = right_down ? 0
@@ -658,17 +1175,78 @@ out_pin:right output
     sliderchange(-1);
     drawing_changed = 0;
   );
-  last_left_down = left_down;
-  last_right_down = right_down;
+  // Every hidden JSFX slider is represented by a custom 16-bit control.
+  draw_pixel_panel(20, 378, 535, 125, 0.01, 0.78, 0.32, "SPECTRAL FILTER");
+  themed_knob(1, 70, 435, 10, 1000, 1, "LOW CUT HZ", 0.03, 0.96, 0.42);
+  themed_knob(2, 175, 435, 1000, 24000, 10, "HIGH CUT HZ", 0.03, 0.96, 0.42);
+  themed_knob(3, 280, 435, 0.1, 4, 0.1, "EDGE OCT", 0.03, 0.96, 0.42);
+  themed_knob(4, 385, 435, -12, 12, 0.1, "TILT DB/OCT", 0.03, 0.96, 0.42);
+  themed_knob(6, 500, 435, 0, 5, 1, "FFT SIZE", 0.03, 0.96, 0.42);
+  draw_pixel_sparkle(536, 394, 2, 0.82, 1.00, 0.36);
 
-  draw_shamrock(25, gfx_h - 24, 8);
-  draw_pot_of_gold(gfx_w - 35, gfx_h - 7, 32);
-  gfx_setfont(4, "Arial", 10, 'b');
+  // Master output is deliberately isolated and red so it never gets lost.
+  draw_pixel_panel(570, 378, 135, 125, 1.00, 0.16, 0.30, "MASTER OUTPUT");
+  themed_knob(5, 630, 435, -24, 12, 0.1, "OUTPUT DB", 1.00, 0.22, 0.38);
+  draw_pixel_sparkle(678, 394, 2, 1.00, 0.82, 0.28);
+
+  draw_pixel_panel(710, 378, 430, 125, 1.00, 0.44, 0.01, "FFT DAMAGE");
+  themed_knob(7, 755, 435, 0, 100, 1, "SMEAR %", 1.00, 0.58, 0.04);
+  themed_knob(8, 860, 435, 0, 100, 1, "GRAIN %", 1.00, 0.58, 0.04);
+  themed_knob(9, 965, 435, 0, 100, 1, "PHASE %", 1.00, 0.58, 0.04);
+  themed_knob(10, 1070, 435, 0, 4, 1, "REPEAT", 1.00, 0.58, 0.04);
+
+  draw_pixel_panel(20, 515, 460, 125, 0.72, 0.12, 1.00, "DRAWING MAGIC");
+  themed_knob(11, 85, 572, 0, 100, 0.1, "MORPH A/B %", 0.88, 0.28, 1.00);
+  themed_knob(12, 195, 572, -4, 4, 0.01, "SHIFT OCT", 0.88, 0.28, 1.00);
+  themed_knob(13, 305, 572, 0, 4, 0.01, "SWEEP OCT", 0.88, 0.28, 1.00);
+  themed_knob(14, 415, 572, 0, 10, 0.01, "SWEEP HZ", 0.88, 0.28, 1.00);
+  draw_pixel_sparkle(458, 531, 2, 1.00, 0.66, 1.00);
+
+  draw_pixel_panel(495, 515, 645, 125, 0.00, 0.82, 0.58, "PRE-DELAY  //  BEFORE THE MAGIC");
+  themed_knob(15, 535, 572, 1, 2000, 1, "LEFT MS", 0.04, 1.00, 0.68);
+  themed_knob(16, 625, 572, 1, 2000, 1, "RIGHT MS", 0.04, 1.00, 0.68);
+  themed_knob(17, 715, 572, 0, 95, 0.1, "FDBK %", 0.04, 1.00, 0.68);
+  themed_knob(18, 805, 572, 0, 100, 0.1, "PINGPONG", 0.04, 1.00, 0.68);
+  themed_knob(19, 895, 572, 0, 100, 0.1, "DAMP %", 0.04, 1.00, 0.68);
+  themed_knob(28, 985, 572, 0, 100, 0.1, "DIFFUSE %", 1.00, 0.34, 0.88);
+  themed_knob(20, 1075, 572, 0, 100, 0.1, "MIX %", 0.04, 1.00, 0.68);
+  draw_pixel_sparkle(1015, 545, 2, 1.00, 0.80, 1.00);
+  draw_pixel_sparkle(1030, 620, 1, 0.62, 1.00, 0.92);
+
+  draw_pixel_panel(20, 652, 645, 145, 0.04, 0.46, 1.00, "POST-DELAY  //  AFTER THE MAGIC");
+  themed_knob(21, 60, 712, 1, 2000, 1, "LEFT MS", 0.12, 0.64, 1.00);
+  themed_knob(22, 150, 712, 1, 2000, 1, "RIGHT MS", 0.12, 0.64, 1.00);
+  themed_knob(23, 240, 712, 0, 95, 0.1, "FDBK %", 0.12, 0.64, 1.00);
+  themed_knob(24, 330, 712, 0, 100, 0.1, "PINGPONG", 0.12, 0.64, 1.00);
+  themed_knob(25, 420, 712, 0, 100, 0.1, "DAMP %", 0.12, 0.64, 1.00);
+  themed_knob(29, 510, 712, 0, 100, 0.1, "DIFFUSE %", 1.00, 0.30, 0.82);
+  themed_knob(26, 600, 712, 0, 100, 0.1, "MIX %", 0.12, 0.64, 1.00);
+  draw_pixel_sparkle(540, 684, 2, 1.00, 0.82, 1.00);
+  draw_pixel_sparkle(555, 770, 1, 0.62, 0.92, 1.00);
+
+  draw_pixel_panel(680, 652, 460, 145, 1.00, 0.68, 0.01, "CHARACTER CAULDRON  //  3-BAND");
+  themed_knob(31, 720, 712, 0, 60, 0.1, "LOW DRIVE", 1.00, 0.72, 0.04);
+  themed_knob(32, 810, 712, 0, 60, 0.1, "MID DRIVE", 1.00, 0.52, 0.06);
+  themed_knob(33, 900, 712, 0, 60, 0.1, "HIGH DRIVE", 1.00, 0.28, 0.18);
+  themed_knob(27, 990, 712, 0, 100, 0.1, "GOLD", 1.00, 0.82, 0.04);
+  themed_knob(30, 1080, 712, 0, 100, 0.1, "SPREAD %", 1.00, 0.38, 0.66);
+  gfx_setfont(6, "Silom", 8, 'b');
+  gfx_r = 0.08; gfx_g = 0.04; gfx_b = 0.01; gfx_a = 1;
+  gfx_x = 697; gfx_y = 774;
+  gfx_drawstr("250 HZ / 2.5K SPLIT  //  ANCHORED LOWS  //  WIDE MIDS + HIGHS");
+  draw_pixel_sparkle(1118, 671, 2, 1.00, 0.92, 0.25);
+
+  draw_shamrock(25, gfx_h - 20, 7);
+  gfx_setfont(4, "Silom", 9, 'b');
   gfx_r = 1; gfx_g = 0.79; gfx_b = 0.15; gfx_a = 1;
   gfx_x = margin_left;
-  gfx_y = gfx_h - 22;
-  gfx_drawstr("LEFT DRAG: make magic   RIGHT DRAG: undo magic   //   FFT ");
+  gfx_y = gfx_h - 18;
+  gfx_drawstr("LEFT DRAG: MAKE MAGIC   RIGHT DRAG: FLATTEN   //   FFT ");
   gfx_drawnumber(fftsize, 0);
   gfx_drawstr("   //   ");
   gfx_drawnumber(fftsize / srate * 1000, 1);
-  gfx_drawstr(" ms");
+  gfx_drawstr(" ms   //   UI 2.6.0   //   RANDOM POT O' GOLD");
+  last_mouse_y = mouse_y;
+  last_mouse_down = mouse_down;
+  last_left_down = left_down;
+  last_right_down = right_down;

@@ -1,7 +1,7 @@
 // @description JSchwartz Simple Spectral Filter — Lucky Edition
-// @version 2.6.0
+// @version 2.7.1
 // @author JSchwartz
-// @changelog Add output-safe parameter randomization and fix the Master Output title.
+// @changelog Make every panel translucent, restore the single rainbow curve, and fill the UI with lucky pixel characters.
 // @about Drawable spectral filtering, FFT damage, and stereo delays wrapped in
 //   a rainbow-leprechaun interface. Draw two curves, morph between them, and
 //   automate the filter motion from REAPER.
@@ -43,6 +43,22 @@ slider30:0<0,100,0.1>-Pre Spectral: Distortion Spread (%)
 slider31:6<0,60,0.1>-Distortion: Low Drive (dB)
 slider32:12<0,60,0.1>-Distortion: Mid Drive (dB)
 slider33:6<0,60,0.1>-Distortion: High Drive (dB)
+slider34:0<0,33,1>-LFO 1: Target
+slider35:0<0,5,1>-LFO 1: Shape
+slider36:0.5<0.05,20,0.01>-LFO 1: Rate (Hz)
+slider37:0<0,100,0.1>-LFO 1: Depth (%)
+slider38:0<0,33,1>-LFO 2: Target
+slider39:1<0,5,1>-LFO 2: Shape
+slider40:0.33<0.05,20,0.01>-LFO 2: Rate (Hz)
+slider41:0<0,100,0.1>-LFO 2: Depth (%)
+slider42:0<0,33,1>-LFO 3: Target
+slider43:2<0,5,1>-LFO 3: Shape
+slider44:0.2<0.05,20,0.01>-LFO 3: Rate (Hz)
+slider45:0<0,100,0.1>-LFO 3: Depth (%)
+slider46:0<0,33,1>-LFO 4: Target
+slider47:5<0,5,1>-LFO 4: Shape
+slider48:0.125<0.05,20,0.01>-LFO 4: Rate (Hz)
+slider49:0<0,100,0.1>-LFO 4: Depth (%)
 
 in_pin:left input
 in_pin:right input
@@ -129,6 +145,19 @@ options:gfx_hz=60 no_meter
   pre_fx_held_left = 0;
   pre_fx_held_right = 0;
   auto_sweep_phase = 0;
+  lfo1_phase = 0;
+  lfo2_phase = 0.25;
+  lfo3_phase = 0.5;
+  lfo4_phase = 0.75;
+  lfo1_random = rand(2) - 1;
+  lfo2_random = rand(2) - 1;
+  lfo3_random = rand(2) - 1;
+  lfo4_random = rand(2) - 1;
+  lfo1_value = 0;
+  lfo2_value = 0;
+  lfo3_value = 0;
+  lfo4_value = 0;
+  ui_page = 0;
 
   pdc_bot_ch = 0;
   pdc_top_ch = 2;
@@ -136,6 +165,35 @@ options:gfx_hz=60 no_meter
   function smooth_step(value) local(x) (
     x = min(1, max(0, value));
     x*x*(3 - 2*x);
+  );
+
+  function lfo_wave(shape, phase_value, random_value) local(wave_value) (
+    shape == 0 ? wave_value = sin(2*$pi*phase_value);
+    shape == 1 ? wave_value = 1 - 4*abs(phase_value - 0.5);
+    shape == 2 ? (
+      phase_value < 0.5 ? wave_value = 1 : wave_value = -1;
+    );
+    shape == 3 ? wave_value = phase_value*2 - 1;
+    shape == 4 ? wave_value = 1 - phase_value*2;
+    shape == 5 ? wave_value = random_value;
+    wave_value;
+  );
+
+  // Modulation is summed in normalized parameter space, then clamped to the
+  // original control range. Full depth is one half of a control's total span,
+  // keeping feedback, output, and delay targets inside their established limits.
+  function modulated_parameter(parameter_index, minimum, maximum, step)
+    local(value, modulation, range) (
+    value = slider(parameter_index);
+    modulation = 0;
+    (slider34 | 0) == parameter_index ? modulation += lfo1_value*slider37/100;
+    (slider38 | 0) == parameter_index ? modulation += lfo2_value*slider41/100;
+    (slider42 | 0) == parameter_index ? modulation += lfo3_value*slider45/100;
+    (slider46 | 0) == parameter_index ? modulation += lfo4_value*slider49/100;
+    range = maximum - minimum;
+    value += modulation*range*0.5;
+    step > 0 ? value = minimum + floor((value - minimum)/step + 0.5)*step;
+    min(maximum, max(minimum, value));
   );
 
   function shape_db_at(frequency)
@@ -317,33 +375,67 @@ options:gfx_hz=60 no_meter
 
   function refresh_control_state() (
 
-  low_hz = max(10, min(slider1, srate * 0.49));
-  high_hz = max(low_hz, min(slider2, srate * 0.49));
-  edge_octaves = max(0.1, slider3);
-  tilt_db_per_octave = slider4;
-  output_gain = exp(slider5 * log(10) / 20);
-  smear_coefficient = slider7 <= 0 ? 0 : 1 - exp(-0.055 * slider7);
-  grain_amount = slider8 / 100;
-  grain_step_db = 0.25 + grain_amount*grain_amount*23.75;
-  phase_scatter_amount = (slider9 / 100) ^ 2;
-  frame_repeat_count = slider10 | 0;
+  control1 = modulated_parameter(1, 10, 1000, 0);
+  control2 = modulated_parameter(2, 1000, 24000, 0);
+  control3 = modulated_parameter(3, 0.1, 4, 0);
+  control4 = modulated_parameter(4, -12, 12, 0);
+  control5 = modulated_parameter(5, -24, 12, 0);
+  control6 = modulated_parameter(6, 0, 5, 1);
+  control7 = modulated_parameter(7, 0, 100, 0);
+  control8 = modulated_parameter(8, 0, 100, 0);
+  control9 = modulated_parameter(9, 0, 100, 0);
+  control10 = modulated_parameter(10, 0, 4, 1);
+  control11 = modulated_parameter(11, 0, 100, 0);
+  control12 = modulated_parameter(12, -4, 4, 0);
+  control13 = modulated_parameter(13, 0, 4, 0);
+  control14 = modulated_parameter(14, 0, 10, 0);
+  control15 = modulated_parameter(15, 1, 2000, 0);
+  control16 = modulated_parameter(16, 1, 2000, 0);
+  control17 = modulated_parameter(17, 0, 95, 0);
+  control18 = modulated_parameter(18, 0, 100, 0);
+  control19 = modulated_parameter(19, 0, 100, 0);
+  control20 = modulated_parameter(20, 0, 100, 0);
+  control21 = modulated_parameter(21, 1, 2000, 0);
+  control22 = modulated_parameter(22, 1, 2000, 0);
+  control23 = modulated_parameter(23, 0, 95, 0);
+  control24 = modulated_parameter(24, 0, 100, 0);
+  control25 = modulated_parameter(25, 0, 100, 0);
+  control26 = modulated_parameter(26, 0, 100, 0);
+  control27 = modulated_parameter(27, 0, 100, 0);
+  control28 = modulated_parameter(28, 0, 100, 0);
+  control29 = modulated_parameter(29, 0, 100, 0);
+  control30 = modulated_parameter(30, 0, 100, 0);
+  control31 = modulated_parameter(31, 0, 60, 0);
+  control32 = modulated_parameter(32, 0, 60, 0);
+  control33 = modulated_parameter(33, 0, 60, 0);
 
-  shape_morph = slider11 / 100;
-  shape_manual_shift_octaves = slider12;
-  auto_sweep_depth_octaves = slider13;
-  auto_sweep_rate_hz = slider14;
+  low_hz = max(10, min(control1, srate * 0.49));
+  high_hz = max(low_hz, min(control2, srate * 0.49));
+  edge_octaves = max(0.1, control3);
+  tilt_db_per_octave = control4;
+  output_gain = exp(control5 * log(10) / 20);
+  smear_coefficient = control7 <= 0 ? 0 : 1 - exp(-0.055 * control7);
+  grain_amount = control8 / 100;
+  grain_step_db = 0.25 + grain_amount*grain_amount*23.75;
+  phase_scatter_amount = (control9 / 100) ^ 2;
+  frame_repeat_count = control10 | 0;
+
+  shape_morph = control11 / 100;
+  shape_manual_shift_octaves = control12;
+  auto_sweep_depth_octaves = control13;
+  auto_sweep_rate_hz = control14;
 
   low_edge_start = max(1, low_hz / (2 ^ edge_octaves));
 
-  pre_delay_left_target = min(delay_buffer_frames - 2, max(1, slider15*srate/1000));
-  pre_delay_right_target = min(delay_buffer_frames - 2, max(1, slider16*srate/1000));
-  pre_feedback = slider17 / 100;
-  pre_crossfeed = slider18 / 100;
-  pre_damping_cutoff = 20000 * ((600 / 20000) ^ (slider19 / 100));
+  pre_delay_left_target = min(delay_buffer_frames - 2, max(1, control15*srate/1000));
+  pre_delay_right_target = min(delay_buffer_frames - 2, max(1, control16*srate/1000));
+  pre_feedback = control17 / 100;
+  pre_crossfeed = control18 / 100;
+  pre_damping_cutoff = 20000 * ((600 / 20000) ^ (control19 / 100));
   pre_damping_cutoff = min(srate*0.45, pre_damping_cutoff);
-  pre_damping_alpha = slider19 <= 0 ? 1 : 1 - exp(-2*$pi*pre_damping_cutoff/srate);
-  pre_mix = slider20 / 100;
-  pre_diffusion_amount = slider28 / 100;
+  pre_damping_alpha = control19 <= 0 ? 1 : 1 - exp(-2*$pi*pre_damping_cutoff/srate);
+  pre_mix = control20 / 100;
+  pre_diffusion_amount = control28 / 100;
   pre_diffusion_insert = smooth_step(min(1, pre_diffusion_amount*20));
   pre_diffusion_coefficient = 0.22 + sqrt(pre_diffusion_amount)*0.56;
   pre_diffusion_a_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0023)));
@@ -355,15 +447,15 @@ options:gfx_hz=60 no_meter
   pre_diffusion_d_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0149)));
   pre_diffusion_d_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0191)));
 
-  post_delay_left_target = min(delay_buffer_frames - 2, max(1, slider21*srate/1000));
-  post_delay_right_target = min(delay_buffer_frames - 2, max(1, slider22*srate/1000));
-  post_feedback = slider23 / 100;
-  post_crossfeed = slider24 / 100;
-  post_damping_cutoff = 20000 * ((600 / 20000) ^ (slider25 / 100));
+  post_delay_left_target = min(delay_buffer_frames - 2, max(1, control21*srate/1000));
+  post_delay_right_target = min(delay_buffer_frames - 2, max(1, control22*srate/1000));
+  post_feedback = control23 / 100;
+  post_crossfeed = control24 / 100;
+  post_damping_cutoff = 20000 * ((600 / 20000) ^ (control25 / 100));
   post_damping_cutoff = min(srate*0.45, post_damping_cutoff);
-  post_damping_alpha = slider25 <= 0 ? 1 : 1 - exp(-2*$pi*post_damping_cutoff/srate);
-  post_mix = slider26 / 100;
-  post_diffusion_amount = slider29 / 100;
+  post_damping_alpha = control25 <= 0 ? 1 : 1 - exp(-2*$pi*post_damping_cutoff/srate);
+  post_mix = control26 / 100;
+  post_diffusion_amount = control29 / 100;
   post_diffusion_insert = smooth_step(min(1, post_diffusion_amount*20));
   post_diffusion_coefficient = 0.22 + sqrt(post_diffusion_amount)*0.56;
   post_diffusion_a_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0031)));
@@ -374,20 +466,20 @@ options:gfx_hz=60 no_meter
   post_diffusion_c_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0149)));
   post_diffusion_d_left = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0173)));
   post_diffusion_d_right = min(diffusion_buffer_frames - 1, max(1, floor(srate*0.0239)));
-  pre_fx_character_target = slider27 / 100;
-  pre_fx_spread_target = slider30 / 100;
+  pre_fx_character_target = control27 / 100;
+  pre_fx_spread_target = control30 / 100;
   pre_fx_low_xover = 1 - exp(-2*$pi*250/srate);
   pre_fx_high_xover = 1 - exp(-2*$pi*2500/srate);
-  pre_fx_low_band_gain = exp(slider31*log(10)/20);
-  pre_fx_mid_band_gain = exp(slider32*log(10)/20);
-  pre_fx_high_band_gain = exp(slider33*log(10)/20);
+  pre_fx_low_band_gain = exp(control31*log(10)/20);
+  pre_fx_mid_band_gain = exp(control32*log(10)/20);
+  pre_fx_high_band_gain = exp(control33*log(10)/20);
 
   pre_delay_left_current <= 0 ? pre_delay_left_current = pre_delay_left_target;
   pre_delay_right_current <= 0 ? pre_delay_right_current = pre_delay_right_target;
   post_delay_left_current <= 0 ? post_delay_left_current = post_delay_left_target;
   post_delay_right_current <= 0 ? post_delay_right_current = post_delay_right_target;
 
-  requested_fft_size = (2 ^ (slider6 + 10)) | 0;
+  requested_fft_size = (2 ^ (control6 + 10)) | 0;
   requested_fft_size != fftsize ? (
     fftsize = requested_fft_size;
     position = 0;
@@ -419,6 +511,27 @@ options:gfx_hz=60 no_meter
   refresh_control_state();
 
 @block
+
+  lfo1_previous_phase = lfo1_phase;
+  lfo2_previous_phase = lfo2_phase;
+  lfo3_previous_phase = lfo3_phase;
+  lfo4_previous_phase = lfo4_phase;
+  lfo1_phase += slider36*samplesblock/srate;
+  lfo2_phase += slider40*samplesblock/srate;
+  lfo3_phase += slider44*samplesblock/srate;
+  lfo4_phase += slider48*samplesblock/srate;
+  lfo1_phase -= floor(lfo1_phase);
+  lfo2_phase -= floor(lfo2_phase);
+  lfo3_phase -= floor(lfo3_phase);
+  lfo4_phase -= floor(lfo4_phase);
+  lfo1_phase < lfo1_previous_phase ? lfo1_random = rand(2) - 1;
+  lfo2_phase < lfo2_previous_phase ? lfo2_random = rand(2) - 1;
+  lfo3_phase < lfo3_previous_phase ? lfo3_random = rand(2) - 1;
+  lfo4_phase < lfo4_previous_phase ? lfo4_random = rand(2) - 1;
+  lfo1_value = lfo_wave(slider35 | 0, lfo1_phase, lfo1_random);
+  lfo2_value = lfo_wave(slider39 | 0, lfo2_phase, lfo2_random);
+  lfo3_value = lfo_wave(slider43 | 0, lfo3_phase, lfo3_random);
+  lfo4_value = lfo_wave(slider47 | 0, lfo4_phase, lfo4_random);
 
   // Custom @gfx controls update slider values outside REAPER's stock UI.
   // Refresh every derived coefficient and target once per audio block so the
@@ -771,6 +884,34 @@ options:gfx_hz=60 no_meter
     gfx_rect(center_x - size*0.42, center_y + size*0.36, size*0.84, size*0.18);
   );
 
+  function draw_pixel_leprechaun(center_x, foot_y, size, coat_red, coat_green, coat_blue) (
+    // Chunky 16-bit body, striped stockings, and square buckled shoes.
+    gfx_r = 0.015; gfx_g = 0.045; gfx_b = 0.018; gfx_a = 0.72;
+    gfx_rect(center_x - size*1.20 + 3, foot_y - size*3.35 + 3,
+             size*2.40, size*3.35);
+    gfx_r = coat_red; gfx_g = coat_green; gfx_b = coat_blue; gfx_a = 1;
+    gfx_rect(center_x - size, foot_y - size*3.30, size*2, size*1.75);
+    gfx_rect(center_x - size*1.42, foot_y - size*3.05, size*0.48, size*1.30);
+    gfx_rect(center_x + size*0.94, foot_y - size*3.05, size*0.48, size*1.30);
+    gfx_r = 0.03; gfx_g = 0.08; gfx_b = 0.025;
+    gfx_rect(center_x - size, foot_y - size*2.22, size*2, size*0.35);
+    gfx_r = 1; gfx_g = 0.74; gfx_b = 0.06;
+    gfx_rect(center_x - size*0.25, foot_y - size*2.29, size*0.50, size*0.48);
+    gfx_r = 0.96; gfx_g = 0.62; gfx_b = 0.08;
+    gfx_rect(center_x - size*0.78, foot_y - size*1.55, size*0.55, size*1.20);
+    gfx_rect(center_x + size*0.23, foot_y - size*1.55, size*0.55, size*1.20);
+    gfx_r = 0.98; gfx_g = 0.94; gfx_b = 0.66;
+    gfx_rect(center_x - size*0.78, foot_y - size*1.20, size*0.55, size*0.22);
+    gfx_rect(center_x + size*0.23, foot_y - size*0.72, size*0.55, size*0.22);
+    gfx_r = 0.025; gfx_g = 0.045; gfx_b = 0.018;
+    gfx_rect(center_x - size*1.02, foot_y - size*0.40, size*0.82, size*0.40);
+    gfx_rect(center_x + size*0.20, foot_y - size*0.40, size*0.82, size*0.40);
+    gfx_r = 1; gfx_g = 0.72; gfx_b = 0.05;
+    gfx_rect(center_x - size*0.84, foot_y - size*0.34, size*0.24, size*0.20);
+    gfx_rect(center_x + size*0.56, foot_y - size*0.34, size*0.24, size*0.20);
+    draw_leprechaun_face(center_x, foot_y - size*4.18, size*0.92);
+  );
+
   function draw_pixel_mushroom(x, y, scale) (
     gfx_r = 0.90; gfx_g = 0.06; gfx_b = 0.30; gfx_a = 1;
     gfx_rect(x + scale*2, y, scale*6, scale*2);
@@ -832,23 +973,33 @@ options:gfx_hz=60 no_meter
     gfx_rect(x - size*0.45, y - size*0.55, size*0.42, size*0.22);
   );
 
+  function draw_coin_trail(x, y, count, spacing, size) local(coin) (
+    coin = 0;
+    loop(count,
+      draw_gold_coin(x + coin*spacing,
+                     y - abs((count - 1)*0.5 - coin)*size*0.65,
+                     size);
+      coin += 1;
+    );
+  );
+
   function draw_pixel_panel(x, y, width, height, red, green, blue, title)
     local(stripe) (
-    gfx_r = 0.005; gfx_g = 0.035; gfx_b = 0.014; gfx_a = 0.78;
+    gfx_r = 0.005; gfx_g = 0.035; gfx_b = 0.014; gfx_a = 0.42;
     gfx_rect(x + 5, y + 6, width, height);
-    gfx_r = red*0.42; gfx_g = green*0.42; gfx_b = blue*0.42; gfx_a = 0.98;
+    gfx_r = red*0.42; gfx_g = green*0.42; gfx_b = blue*0.42; gfx_a = 0.48;
     gfx_rect(x, y, width, height);
-    gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = 0.90;
+    gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = 0.20;
     gfx_rect(x + 4, y + 4, width - 8, height - 8);
     gfx_r = min(1, red*1.30 + 0.08); gfx_g = min(1, green*1.30 + 0.08);
-    gfx_b = min(1, blue*1.30 + 0.08); gfx_a = 0.76;
+    gfx_b = min(1, blue*1.30 + 0.08); gfx_a = 0.88;
     gfx_rect(x + 4, y + 4, width - 8, 3);
     gfx_rect(x + 4, y + 4, 3, height - 8);
-    gfx_r = red*0.26; gfx_g = green*0.26; gfx_b = blue*0.26; gfx_a = 0.72;
+    gfx_r = red*0.26; gfx_g = green*0.26; gfx_b = blue*0.26; gfx_a = 0.68;
     gfx_rect(x + 7, y + height - 8, width - 14, 4);
     stripe = 0;
     loop(max(1, floor(width / 18)),
-      gfx_a = stripe % 2 ? 0.045 : 0.09;
+      gfx_a = stripe % 2 ? 0.025 : 0.055;
       gfx_rect(x + 7 + stripe*18, y + 26, 9, height - 36);
       stripe += 1;
     );
@@ -859,9 +1010,10 @@ options:gfx_hz=60 no_meter
   );
 
   function themed_knob(index, x, y, minimum, maximum, step, label, red, green, blue)
-    local(value, normalized, hover, new_value, angle, display_value) (
+    local(value, shown_value, normalized, hover, new_value, angle, display_value) (
     value = slider(index);
-    normalized = (value - minimum) / max(0.0000001, maximum - minimum);
+    shown_value = index <= 33 ? modulated_parameter(index, minimum, maximum, step) : value;
+    normalized = (shown_value - minimum) / max(0.0000001, maximum - minimum);
     hover = mouse_x >= x - 30 && mouse_x <= x + 30
             && mouse_y >= y - 30 && mouse_y <= y + 30;
     mouse_down && !last_mouse_down && hover ? (
@@ -876,7 +1028,10 @@ options:gfx_hz=60 no_meter
       new_value = min(maximum, max(minimum, new_value));
       slider_automate(slider(index) = new_value);
       value = new_value;
-      normalized = (value - minimum) / max(0.0000001, maximum - minimum);
+      shown_value = index <= 33
+                    ? modulated_parameter(index, minimum, maximum, step)
+                    : value;
+      normalized = (shown_value - minimum) / max(0.0000001, maximum - minimum);
     );
 
     // Pixel shadow, colored bezel, stepped highlights, and a bright gold needle.
@@ -902,11 +1057,137 @@ options:gfx_hz=60 no_meter
     gfx_x = x - 41; gfx_y = y + 32; gfx_drawstr(label);
     gfx_x = x - 24; gfx_y = y + 45;
     index == 6 ? (
-      display_value = 2 ^ ((value | 0) + 10);
+      display_value = 2 ^ ((shown_value | 0) + 10);
       gfx_drawnumber(display_value, 0);
-    ) : step >= 1 ? gfx_drawnumber(value, 0)
-                  : step >= 0.1 ? gfx_drawnumber(value, 1)
-                                : gfx_drawnumber(value, 2);
+    ) : step >= 1 ? gfx_drawnumber(shown_value, 0)
+                  : step >= 0.1 ? gfx_drawnumber(shown_value, 1)
+                                : gfx_drawnumber(shown_value, 2);
+  );
+
+  function draw_target_name(target) (
+    target == 0 ? gfx_drawstr("NONE");
+    target == 1 ? gfx_drawstr("LOW CUT");
+    target == 2 ? gfx_drawstr("HIGH CUT");
+    target == 3 ? gfx_drawstr("EDGE WIDTH");
+    target == 4 ? gfx_drawstr("SPECTRAL TILT");
+    target == 5 ? gfx_drawstr("OUTPUT");
+    target == 6 ? gfx_drawstr("FFT SIZE");
+    target == 7 ? gfx_drawstr("SMEAR");
+    target == 8 ? gfx_drawstr("GRAIN");
+    target == 9 ? gfx_drawstr("PHASE SCATTER");
+    target == 10 ? gfx_drawstr("FRAME REPEAT");
+    target == 11 ? gfx_drawstr("MORPH A/B");
+    target == 12 ? gfx_drawstr("DRAWING SHIFT");
+    target == 13 ? gfx_drawstr("SWEEP DEPTH");
+    target == 14 ? gfx_drawstr("SWEEP RATE");
+    target == 15 ? gfx_drawstr("PRE LEFT TIME");
+    target == 16 ? gfx_drawstr("PRE RIGHT TIME");
+    target == 17 ? gfx_drawstr("PRE FEEDBACK");
+    target == 18 ? gfx_drawstr("PRE PINGPONG");
+    target == 19 ? gfx_drawstr("PRE DAMPING");
+    target == 20 ? gfx_drawstr("PRE MIX");
+    target == 21 ? gfx_drawstr("POST LEFT TIME");
+    target == 22 ? gfx_drawstr("POST RIGHT TIME");
+    target == 23 ? gfx_drawstr("POST FEEDBACK");
+    target == 24 ? gfx_drawstr("POST PINGPONG");
+    target == 25 ? gfx_drawstr("POST DAMPING");
+    target == 26 ? gfx_drawstr("POST MIX");
+    target == 27 ? gfx_drawstr("GOLD");
+    target == 28 ? gfx_drawstr("PRE DIFFUSION");
+    target == 29 ? gfx_drawstr("POST DIFFUSION");
+    target == 30 ? gfx_drawstr("DISTORT SPREAD");
+    target == 31 ? gfx_drawstr("LOW DRIVE");
+    target == 32 ? gfx_drawstr("MID DRIVE");
+    target == 33 ? gfx_drawstr("HIGH DRIVE");
+  );
+
+  function draw_shape_name(shape) (
+    shape == 0 ? gfx_drawstr("SINE");
+    shape == 1 ? gfx_drawstr("TRIANGLE");
+    shape == 2 ? gfx_drawstr("SQUARE");
+    shape == 3 ? gfx_drawstr("SAW UP");
+    shape == 4 ? gfx_drawstr("SAW DOWN");
+    shape == 5 ? gfx_drawstr("RANDOM HOLD");
+  );
+
+  function themed_selector(index, x, y, width, minimum, maximum, label, kind,
+                            red, green, blue)
+    local(value, hover) (
+    value = slider(index) | 0;
+    hover = mouse_x >= x && mouse_x < x + width
+            && mouse_y >= y && mouse_y < y + 32;
+    left_pressed && hover ? (
+      mouse_x < x + width*0.5 ? value -= 1 : value += 1;
+      value < minimum ? value = maximum;
+      value > maximum ? value = minimum;
+      slider_automate(slider(index) = value);
+      button_consumed = 1;
+    );
+    gfx_r = red*0.30; gfx_g = green*0.30; gfx_b = blue*0.30; gfx_a = 1;
+    gfx_rect(x + 3, y + 4, width, 32);
+    gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = hover ? 1 : 0.90;
+    gfx_rect(x, y, width, 32);
+    gfx_r = 0.015; gfx_g = 0.055; gfx_b = 0.020; gfx_a = 0.92;
+    gfx_rect(x + 4, y + 4, width - 8, 24);
+    gfx_setfont(6, "Silom", 9, 'b');
+    gfx_r = 1; gfx_g = 0.84; gfx_b = 0.18; gfx_a = 1;
+    gfx_x = x + 8; gfx_y = y + 9; gfx_drawstr("<");
+    gfx_x = x + width - 14; gfx_y = y + 9; gfx_drawstr(">");
+    gfx_r = min(1, red*1.2 + 0.18); gfx_g = min(1, green*1.2 + 0.18);
+    gfx_b = min(1, blue*1.2 + 0.18);
+    gfx_x = x + 24; gfx_y = y + 9;
+    kind == 0 ? draw_target_name(value) : draw_shape_name(value);
+    gfx_r = 0.012; gfx_g = 0.045; gfx_b = 0.016;
+    gfx_x = x + 4; gfx_y = y - 13; gfx_drawstr(label);
+  );
+
+  function draw_lfo_preview(x, y, width, height, shape, phase_value, random_value,
+                            red, green, blue)
+    local(point, preview_phase, preview_value, px, py, previous_px, previous_py) (
+    gfx_r = 0.005; gfx_g = 0.035; gfx_b = 0.014; gfx_a = 0.90;
+    gfx_rect(x, y, width, height);
+    gfx_r = red*0.55; gfx_g = green*0.55; gfx_b = blue*0.55; gfx_a = 0.50;
+    gfx_line(x, y + height*0.5, x + width, y + height*0.5);
+    point = 0;
+    loop(64,
+      preview_phase = point/63;
+      preview_value = lfo_wave(shape, preview_phase, random_value);
+      px = x + preview_phase*width;
+      py = y + height*0.5 - preview_value*height*0.38;
+      point > 0 ? (
+        gfx_r = red; gfx_g = green; gfx_b = blue; gfx_a = 1;
+        gfx_line(previous_px, previous_py, px, py, 1);
+      );
+      previous_px = px;
+      previous_py = py;
+      point += 1;
+    );
+    gfx_r = 1; gfx_g = 0.84; gfx_b = 0.16; gfx_a = 1;
+    gfx_circle(x + phase_value*width,
+               y + height*0.5 - lfo_wave(shape, phase_value, random_value)*height*0.38,
+               4, 1, 1);
+  );
+
+  function draw_lfo_card(x, y, width, height, number,
+                         target_index, shape_index, rate_index, depth_index,
+                         phase_value, random_value, red, green, blue) (
+    number == 1 ? draw_pixel_panel(x, y, width, height, red, green, blue, "LFO 1  //  CLOVER CLOCK");
+    number == 2 ? draw_pixel_panel(x, y, width, height, red, green, blue, "LFO 2  //  RAINBOW CLOCK");
+    number == 3 ? draw_pixel_panel(x, y, width, height, red, green, blue, "LFO 3  //  GOLD CLOCK");
+    number == 4 ? draw_pixel_panel(x, y, width, height, red, green, blue, "LFO 4  //  MOON CLOCK");
+    themed_selector(target_index, x + 18, y + 48, 250, 0, 33,
+                    "TARGET  //  CLICK LEFT OR RIGHT", 0, red, green, blue);
+    themed_selector(shape_index, x + 282, y + 48, 160, 0, 5,
+                    "SHAPE", 1, red, green, blue);
+    themed_knob(rate_index, x + 92, y + 137, 0.05, 20, 0.01,
+                "RATE HZ", red, green, blue);
+    themed_knob(depth_index, x + 205, y + 137, 0, 100, 0.1,
+                "DEPTH %", red, green, blue);
+    draw_lfo_preview(x + 285, y + 111, width - 310, 55,
+                     slider(shape_index) | 0, phase_value, random_value,
+                     red, green, blue);
+    draw_leprechaun_face(x + width - 38, y + height - 30, 10);
+    draw_pot_of_gold(x + width - 84, y + height - 10, 18);
   );
 
   gfx_clear = 0x021308;
@@ -937,6 +1218,41 @@ options:gfx_hz=60 no_meter
   gfx_r = 0.04; gfx_g = 0.38; gfx_b = 0.12; gfx_a = 0.30;
   gfx_rect(0, 790, gfx_w, 40);
 
+  // A crowded lucky kingdom sits behind the translucent controls. These
+  // decorations are deliberately drawn before the panels so their silhouettes
+  // and colors remain visible without obscuring knob labels.
+  draw_pixel_rainbow(36, 405, 248, 370, 5, 0.22);
+  draw_pixel_rainbow(315, 455, 220, 330, 4, 0.20);
+  draw_pixel_rainbow(620, 405, 270, 370, 5, 0.22);
+  draw_pixel_rainbow(910, 470, 210, 315, 4, 0.24);
+  draw_pixel_rainbow(458, 615, 236, 184, 3, 0.26);
+
+  draw_pixel_leprechaun(58, 496, 7, 0.05, 0.72, 0.24);
+  draw_pixel_leprechaun(156, 626, 8, 0.12, 0.88, 0.30);
+  draw_pixel_leprechaun(276, 786, 7, 0.05, 0.62, 0.20);
+  draw_pixel_leprechaun(405, 535, 6, 0.18, 0.82, 0.24);
+  draw_pixel_leprechaun(515, 778, 8, 0.02, 0.70, 0.28);
+  draw_pixel_leprechaun(650, 510, 7, 0.10, 0.84, 0.32);
+  draw_pixel_leprechaun(758, 785, 8, 0.02, 0.64, 0.24);
+  draw_pixel_leprechaun(865, 622, 7, 0.14, 0.90, 0.34);
+  draw_pixel_leprechaun(1000, 790, 7, 0.05, 0.70, 0.20);
+  draw_pixel_leprechaun(1100, 520, 6, 0.18, 0.78, 0.28);
+
+  draw_pot_of_gold(100, 520, 22);
+  draw_pot_of_gold(220, 647, 25);
+  draw_pot_of_gold(344, 800, 23);
+  draw_pot_of_gold(465, 558, 20);
+  draw_pot_of_gold(580, 806, 27);
+  draw_pot_of_gold(706, 538, 22);
+  draw_pot_of_gold(824, 805, 26);
+  draw_pot_of_gold(930, 650, 23);
+  draw_pot_of_gold(1065, 807, 26);
+  draw_pot_of_gold(1130, 558, 20);
+  draw_coin_trail(75, 570, 8, 17, 4);
+  draw_coin_trail(360, 690, 10, 18, 4);
+  draw_coin_trail(720, 590, 9, 18, 4);
+  draw_coin_trail(945, 710, 8, 17, 4);
+
   // Seven-color lucky rainbow ribbon.
   rainbow_strip = 0;
   loop(7,
@@ -958,13 +1274,15 @@ options:gfx_hz=60 no_meter
   gfx_r = 0.28; gfx_g = 0.94; gfx_b = 0.40;
   gfx_x = 83; gfx_y = 57;
   gfx_drawstr("DRAW A POT O' FREQUENCY GOLD  //  EVERY CONTROL IS CUSTOM");
-  draw_pixel_rainbow(665, 29, 135, 45, 3, 0.94);
-  draw_pixel_sparkle(642, 40, 2, 1.00, 0.88, 0.18);
-  draw_pixel_sparkle(795, 56, 2, 0.48, 1.00, 0.72);
+  draw_pixel_rainbow(500, 31, 82, 38, 2, 0.94);
+  draw_pixel_sparkle(486, 40, 2, 1.00, 0.88, 0.18);
+  draw_pixel_sparkle(582, 57, 2, 0.48, 1.00, 0.72);
 
   // Shape selection, copy, and reset buttons.
   button_y = 34;
   button_h = 30;
+  button_main_x = 592;
+  button_lfo_x = 682;
   button_random_x = gfx_w - 350;
   button_a_x = gfx_w - 244;
   button_b_x = gfx_w - 202;
@@ -977,6 +1295,35 @@ options:gfx_hz=60 no_meter
   left_pressed = left_down && !last_left_down;
   !left_down ? active_knob = 0;
   button_consumed = 0;
+
+  left_pressed && mouse_y >= button_y && mouse_y < button_y + button_h ? (
+    mouse_x >= button_main_x && mouse_x < button_main_x + 84 ? (
+      ui_page = 0;
+      button_consumed = 1;
+    );
+    mouse_x >= button_lfo_x && mouse_x < button_lfo_x + 116 ? (
+      ui_page = 1;
+      button_consumed = 1;
+    );
+  );
+
+  gfx_r = ui_page == 0 ? 0.12 : 0.025;
+  gfx_g = ui_page == 0 ? 0.86 : 0.25;
+  gfx_b = ui_page == 0 ? 0.36 : 0.08;
+  gfx_a = 1;
+  gfx_rect(button_main_x, button_y, 84, button_h);
+  gfx_r = ui_page == 1 ? 0.74 : 0.16;
+  gfx_g = ui_page == 1 ? 0.26 : 0.12;
+  gfx_b = ui_page == 1 ? 1.00 : 0.28;
+  gfx_rect(button_lfo_x, button_y, 116, button_h);
+  gfx_r = 1; gfx_g = 0.78; gfx_b = 0.08; gfx_a = 1;
+  gfx_line(button_main_x, button_y, button_main_x + 84, button_y);
+  gfx_line(button_main_x, button_y + button_h, button_main_x + 84, button_y + button_h);
+  gfx_line(button_lfo_x, button_y, button_lfo_x + 116, button_y);
+  gfx_line(button_lfo_x, button_y + button_h, button_lfo_x + 116, button_y + button_h);
+  gfx_setfont(3, "Silom", 10, 'b');
+  gfx_x = button_main_x + 17; gfx_y = button_y + 8; gfx_drawstr("MIXER");
+  gfx_x = button_lfo_x + 14; gfx_y = button_y + 8; gfx_drawstr("LFO GROVE");
 
   left_pressed && mouse_y >= button_y && mouse_y < button_y + button_h ? (
     mouse_x >= button_random_x && mouse_x < button_random_x + 96 ? (
@@ -1051,7 +1398,7 @@ options:gfx_hz=60 no_meter
   draw_pixel_rainbow(margin_left - 10, margin_top - 10,
                      graph_width + 20, graph_height + 20, 2, 0.92);
   // Deep emerald graph with transparent rainbow frequency bands.
-  gfx_r = 0.008; gfx_g = 0.085; gfx_b = 0.035; gfx_a = 1;
+  gfx_r = 0.008; gfx_g = 0.085; gfx_b = 0.035; gfx_a = 0.72;
   gfx_rect(margin_left, margin_top, graph_width, graph_height);
   rainbow_band = 0;
   loop(7,
@@ -1097,49 +1444,34 @@ options:gfx_hz=60 no_meter
            margin_left, margin_top + graph_height);
   gfx_line(margin_left, margin_top + graph_height, margin_left, margin_top);
 
-  // Raw A and B drawings: shamrock green and enchanted violet.
+  // One-curve view: show only the selected editable drawing. The previous UI
+  // stacked A, B, and the composite response, then drew each with extra offset
+  // strokes; that made one gesture look like several separate curves.
+  visible_shape = active_shape ? shape_b : shape_a;
   point = 0;
   loop(max(1, graph_width | 0),
     shape_index = min(shape_point_count - 1,
                       floor(point / max(1, graph_width - 1) * (shape_point_count - 1)));
     current_x = margin_left + point;
-    curve_a_y = margin_top + (12 - max(-60, min(12, shape_a[shape_index]))) / 72 * graph_height;
-    curve_b_y = margin_top + (12 - max(-60, min(12, shape_b[shape_index]))) / 72 * graph_height;
+    curve_y = margin_top + (12 - max(-60, min(12, visible_shape[shape_index]))) / 72 * graph_height;
     point > 0 ? (
-      gfx_r = 0.20; gfx_g = 1; gfx_b = 0.30; gfx_a = active_shape ? 0.30 : 0.85;
-      gfx_line(previous_x, previous_a_y, current_x, curve_a_y, 1);
-      gfx_line(previous_x, previous_a_y + 1, current_x, curve_a_y + 1, 1);
-      gfx_r = 0.72; gfx_g = 0.22; gfx_b = 1; gfx_a = active_shape ? 0.85 : 0.30;
-      gfx_line(previous_x, previous_b_y, current_x, curve_b_y, 1);
-      gfx_line(previous_x, previous_b_y + 1, current_x, curve_b_y + 1, 1);
+      // Preserve the old rainbow filter line without bringing back the extra
+      // A/B/composite traces: this is still exactly one visible stroke.
+      set_rainbow_color(point / max(1, graph_width - 1), 1);
+      gfx_line(previous_x, previous_curve_y, current_x, curve_y, 1);
     );
     previous_x = current_x;
-    previous_a_y = curve_a_y;
-    previous_b_y = curve_b_y;
+    previous_curve_y = curve_y;
     point += 1;
   );
 
-  // The currently heard total response is a live rainbow.
-  point = 0;
-  previous_x = margin_left;
-  previous_y = margin_top + graph_height;
-  loop(max(1, graph_width | 0),
-    frequency = 20 * exp(log(20000 / 20) * point / max(1, graph_width - 1));
-    response = max(0.000001, spectral_gain(frequency) * output_gain);
-    response_db = max(-60, min(12, 20 * log(response) / log(10)));
-    current_x = margin_left + point;
-    current_y = margin_top + (12 - response_db) / 72 * graph_height;
-    point > 0 ? (
-      set_rainbow_color(point / max(1, graph_width - 1), 1);
-      gfx_line(previous_x, previous_y, current_x, current_y, 1);
-      gfx_line(previous_x, previous_y + 1, current_x, current_y + 1, 1);
-      gfx_r = 1; gfx_g = 0.82; gfx_b = 0.24; gfx_a = 0.30;
-      gfx_line(previous_x, previous_y + 2, current_x, current_y + 2, 1);
-    );
-    previous_x = current_x;
-    previous_y = current_y;
-    point += 1;
-  );
+  gfx_setfont(4, "Silom", 9, 'b');
+  gfx_r = active_shape ? 0.86 : 0.35;
+  gfx_g = active_shape ? 0.48 : 1.00;
+  gfx_b = active_shape ? 1.00 : 0.45;
+  gfx_x = margin_left + 10; gfx_y = margin_top + 9;
+  active_shape ? gfx_drawstr("ONE-CURVE VIEW  //  EDITING B")
+               : gfx_drawstr("ONE-CURVE VIEW  //  EDITING A");
 
   // Left-drag draws the selected shape; right-drag erases toward 0 dB.
   inside_graph = mouse_x >= margin_left && mouse_x < margin_left + graph_width
@@ -1175,6 +1507,7 @@ options:gfx_hz=60 no_meter
     sliderchange(-1);
     drawing_changed = 0;
   );
+  ui_page == 0 ? (
   // Every hidden JSFX slider is represented by a custom 16-bit control.
   draw_pixel_panel(20, 378, 535, 125, 0.01, 0.78, 0.32, "SPECTRAL FILTER");
   themed_knob(1, 70, 435, 10, 1000, 1, "LOW CUT HZ", 0.03, 0.96, 0.42);
@@ -1236,6 +1569,25 @@ options:gfx_hz=60 no_meter
   gfx_drawstr("250 HZ / 2.5K SPLIT  //  ANCHORED LOWS  //  WIDE MIDS + HIGHS");
   draw_pixel_sparkle(1118, 671, 2, 1.00, 0.92, 0.25);
 
+  // Two extra lucky sentries watch the mixer page.
+  draw_leprechaun_face(26, 788, 9);
+  draw_pot_of_gold(1118, 797, 19);
+  ) : (
+  draw_lfo_card(20, 378, 550, 195, 1, 34, 35, 36, 37,
+                lfo1_phase, lfo1_random, 0.04, 0.92, 0.34);
+  draw_lfo_card(590, 378, 550, 195, 2, 38, 39, 40, 41,
+                lfo2_phase, lfo2_random, 0.98, 0.22, 0.62);
+  draw_lfo_card(20, 590, 550, 207, 3, 42, 43, 44, 45,
+                lfo3_phase, lfo3_random, 1.00, 0.66, 0.03);
+  draw_lfo_card(590, 590, 550, 207, 4, 46, 47, 48, 49,
+                lfo4_phase, lfo4_random, 0.48, 0.28, 1.00);
+  draw_pixel_rainbow(508, 770, 144, 43, 3, 0.95);
+  draw_leprechaun_face(565, 787, 13);
+  draw_pot_of_gold(605, 811, 24);
+  draw_gold_coin(540, 806, 5);
+  draw_gold_coin(658, 811, 4);
+  );
+
   draw_shamrock(25, gfx_h - 20, 7);
   gfx_setfont(4, "Silom", 9, 'b');
   gfx_r = 1; gfx_g = 0.79; gfx_b = 0.15; gfx_a = 1;
@@ -1245,7 +1597,7 @@ options:gfx_hz=60 no_meter
   gfx_drawnumber(fftsize, 0);
   gfx_drawstr("   //   ");
   gfx_drawnumber(fftsize / srate * 1000, 1);
-  gfx_drawstr(" ms   //   UI 2.6.0   //   RANDOM POT O' GOLD");
+  gfx_drawstr(" ms   //   UI 2.7.1   //   FOUR LUCKY LFOS");
   last_mouse_y = mouse_y;
   last_mouse_down = mouse_down;
   last_left_down = left_down;
